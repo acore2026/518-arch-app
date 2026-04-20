@@ -1,0 +1,7 @@
+<?xml version='1.0' encoding='utf-8'?>
+<resources>
+    <string name="app_name">IntentLink Demo</string>
+    <string name="title_activity_main">IntentLink Demo</string>
+    <string name="package_name">com.acore2026.intentlink</string>
+    <string name="custom_url_scheme">com.acore2026.intentlink</string>
+</resources>
