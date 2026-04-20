@@ -3,6 +3,7 @@ dist/
 test-results/
 
 .playwright/
+.playwright-cli/
 .gemini/
 .codex
 

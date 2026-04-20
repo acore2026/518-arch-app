@@ -7,18 +7,24 @@
     "test": "echo \"Error: no test specified\" && exit 1",
     "dev": "vite --host 0.0.0.0 --port 7100",
     "build": "tsc && vite build",
-    "preview": "vite preview --host 0.0.0.0 --port 7100"
+    "preview": "vite preview --host 0.0.0.0 --port 7100",
+    "android:sync": "npx cap sync android",
+    "android:open": "npx cap open android",
+    "build:android": "npm run build && npx cap sync android"
   },
   "keywords": [],
   "author": "",
   "license": "ISC",
   "type": "commonjs",
   "dependencies": {
+    "@capacitor/android": "^8.3.1",
+    "@capacitor/core": "^8.3.1",
     "lucide-react": "^1.8.0",
     "react": "^19.2.5",
     "react-dom": "^19.2.5"
   },
   "devDependencies": {
+    "@capacitor/cli": "^8.3.1",
     "@playwright/test": "^1.59.1",
     "@tailwindcss/vite": "^4.2.2",
     "@types/react": "^19.2.14",
