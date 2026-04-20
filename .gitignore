@@ -1,0 +1,9 @@
+node_modules/
+dist/
+test-results/
+
+.playwright/
+.gemini/
+.codex
+
+.DS_Store
