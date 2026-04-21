@@ -46,3 +46,25 @@ test('root app and admin route render the unified flow', async ({ page }) => {
 
   await page.screenshot({ path: 'test-results/integration-check.png' });
 });
+
+test('mobile quick controls sheet works on the app route', async ({ browser }) => {
+  const context = await browser.newContext({
+    viewport: { width: 390, height: 844 },
+  });
+  const page = await context.newPage();
+
+  await page.goto('http://localhost:7100');
+
+  await expect(page.getByTestId('mobile-admin-trigger')).toBeVisible();
+  await page.getByTestId('mobile-admin-trigger').click();
+  await expect(page.getByText('Quick Presenter Panel')).toBeVisible();
+
+  await page.getByTestId('mobile-admin-gaming').click();
+  await expect(page.getByText('Cyber Void: Cloud Edition')).toBeVisible();
+
+  await page.getByTestId('mobile-admin-trigger').click();
+  await page.getByTestId('mobile-admin-degrade').click();
+  await expect(page.getByText('CONNECTION UNSTABLE')).toBeVisible();
+
+  await context.close();
+});

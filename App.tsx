@@ -443,6 +443,7 @@ export default function App() {
   const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname));
   const [experience, setExperience] = useState<Experience>('streaming');
   const [showExperienceMenu, setShowExperienceMenu] = useState(false);
+  const [showMobileAdminSheet, setShowMobileAdminSheet] = useState(false);
   const [networkTier, setNetworkTier] = useState<NetworkTier>('5G');
   const [isPlaying, setIsPlaying] = useState(true);
   const [showModal, setShowModal] = useState(false);
@@ -499,6 +500,7 @@ export default function App() {
     }
     setRoute(getRouteFromPath(path));
     setShowExperienceMenu(false);
+    setShowMobileAdminSheet(false);
   };
 
   const resetNetwork = () => {
@@ -523,6 +525,7 @@ export default function App() {
 
     setExperience(nextExperience);
     setShowExperienceMenu(false);
+    setShowMobileAdminSheet(false);
     resetNetwork();
   };
 
@@ -727,6 +730,7 @@ export default function App() {
     const handlePopState = () => {
       setRoute(getRouteFromPath(window.location.pathname));
       setShowExperienceMenu(false);
+      setShowMobileAdminSheet(false);
     };
 
     window.addEventListener('popstate', handlePopState);
@@ -1074,8 +1078,8 @@ export default function App() {
   };
 
   const renderIntent = () => (
-    <div className="flex min-h-[780px] flex-col bg-[#fbfcff]">
-      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+    <div className="flex h-[100dvh] min-h-[100dvh] flex-col overflow-hidden bg-[#fbfcff]">
+      <div className="sticky top-0 z-30 flex items-center justify-between border-b border-slate-200 bg-white px-4 py-3">
         <button
           type="button"
           onClick={() => handleExperienceChange(lastShowcaseExperience.current)}
@@ -1095,7 +1099,7 @@ export default function App() {
 
       <div
         data-testid="intent-transcript"
-        className="flex-1 space-y-6 overflow-y-auto bg-white px-4 py-5"
+        className="min-h-0 flex-1 space-y-6 overflow-y-auto bg-white px-4 py-5"
         onClick={() => {
           if (showExperienceMenu) {
             setShowExperienceMenu(false);
@@ -1105,7 +1109,7 @@ export default function App() {
         {intentMessages.map(renderIntentMessage)}
       </div>
 
-      <div className="border-t border-slate-200 bg-white px-4 pb-4 pt-3">
+      <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white px-4 pb-4 pt-3">
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -1160,10 +1164,136 @@ export default function App() {
     </div>
   );
 
+  const renderMobileAdminSheet = () => (
+    <>
+      <button
+        type="button"
+        data-testid="mobile-admin-trigger"
+        aria-label="Open mobile presenter controls"
+        onClick={() => setShowMobileAdminSheet(true)}
+        className={`fixed right-4 z-40 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(15,23,42,0.22)] transition-colors hover:bg-slate-800 sm:hidden ${
+          isIntent ? 'bottom-24' : 'bottom-6'
+        }`}
+      >
+        <Settings size={16} />
+        <span>Controls</span>
+      </button>
+
+      {showMobileAdminSheet && (
+        <div className="fixed inset-0 z-50 flex items-end sm:hidden">
+          <button
+            type="button"
+            aria-label="Close mobile presenter controls"
+            onClick={() => setShowMobileAdminSheet(false)}
+            className="absolute inset-0 bg-slate-900/45 backdrop-blur-sm"
+          />
+          <div className="relative z-10 w-full rounded-t-[32px] bg-white px-5 pb-6 pt-4 shadow-2xl">
+            <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
+            <div className="mb-5 flex items-start justify-between gap-4">
+              <div>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Mobile Controls</div>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Quick Presenter Panel</h2>
+                <p className="mt-1 text-sm text-slate-500">Use these controls directly on your phone without opening the desktop admin page.</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowMobileAdminSheet(false)}
+                className="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600"
+              >
+                Close
+              </button>
+            </div>
+
+            <div className="space-y-4">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Experience</div>
+                <div className="mt-3 grid grid-cols-3 gap-2">
+                  <button
+                    type="button"
+                    data-testid="mobile-admin-streaming"
+                    onClick={() => handleExperienceChange('streaming')}
+                    className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                      isStreaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Stream
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="mobile-admin-gaming"
+                    onClick={() => handleExperienceChange('gaming')}
+                    className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                      isGaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Game
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="mobile-admin-intent"
+                    onClick={() => handleExperienceChange('intent')}
+                    className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
+                      isIntent ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Intent
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Reset</div>
+                <p className="mt-2 text-sm text-blue-700">{initialStateCopy}</p>
+                <button
+                  type="button"
+                  data-testid="mobile-admin-reset"
+                  onClick={() => {
+                    resetNetwork();
+                    setShowMobileAdminSheet(false);
+                  }}
+                  disabled={networkTier === '5G' || isIntent}
+                  className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-blue-200"
+                >
+                  Reset to Standard 5G
+                </button>
+              </div>
+
+              <div className="rounded-2xl border border-red-100 bg-red-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-red-700">Congestion</div>
+                <p className="mt-2 text-sm text-red-700">{congestionCopy}</p>
+                <button
+                  type="button"
+                  data-testid="mobile-admin-degrade"
+                  onClick={() => {
+                    triggerDegradation();
+                    setShowMobileAdminSheet(false);
+                  }}
+                  disabled={networkTier !== '5G' || isIntent}
+                  className="mt-3 w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:bg-red-200"
+                >
+                  Trigger Network Degradation
+                </button>
+              </div>
+
+              <button
+                type="button"
+                data-testid="mobile-admin-open-page"
+                onClick={() => navigate('/admin')}
+                className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
+              >
+                Open Full /admin Page
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+    </>
+  );
+
   const renderRootPage = () => (
-    <div className="min-h-screen bg-slate-100 px-4 py-6 font-sans text-slate-900 sm:px-6">
-      <div className="mx-auto w-full max-w-md">
-        <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+    <div className="min-h-screen bg-white font-sans text-slate-900">
+      <div className="w-full">
+        <div className="relative min-h-screen overflow-hidden bg-white">
           {!isIntent && (
             <div className="relative z-30 flex items-center justify-between border-b border-gray-100 px-5 py-3">
               <div className="flex items-center space-x-2">
@@ -1181,7 +1311,7 @@ export default function App() {
           )}
 
           <div
-            className={`relative ${isIntent ? 'bg-white' : isGaming ? 'overflow-y-auto bg-gray-50 pb-8' : 'overflow-y-auto pb-8'}`}
+            className={`relative ${isIntent ? 'h-[100dvh] overflow-hidden bg-white' : isGaming ? 'overflow-y-auto bg-gray-50 pb-8' : 'overflow-y-auto pb-8'}`}
             onClick={() => {
               if (showExperienceMenu && !isIntent) {
                 setShowExperienceMenu(false);
@@ -1292,6 +1422,7 @@ export default function App() {
             )}
           </div>
         </div>
+        {renderMobileAdminSheet()}
       </div>
     </div>
   );
