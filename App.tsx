@@ -1,4 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
+import { Capacitor } from '@capacitor/core';
 import {
   AlertTriangle,
   ArrowLeft,
@@ -578,6 +579,7 @@ export default function App() {
   }, []);
 
   const appName = isStreaming ? 'StreamFlex' : isGaming ? 'CloudPlay' : 'IntentLink';
+  const isNativeShell = Capacitor.isNativePlatform();
   const appAccent = isStreaming ? 'bg-blue-600' : isGaming ? 'bg-indigo-600' : 'bg-slate-900';
   const appShape = isStreaming ? 'rounded-full' : 'rounded-lg';
   const experienceButtonLabel = isStreaming ? 'Streaming' : isGaming ? 'Gaming' : 'Direct Intent';
@@ -611,27 +613,55 @@ export default function App() {
       : 'Simulate tower congestion. Video quality collapses, buffering starts, then the upgrade offer appears after 3 seconds.';
 
   return (
-    <div className="min-h-screen bg-gray-50 p-8 font-sans flex items-center justify-center">
-      <div className="flex w-full max-w-6xl flex-col items-start gap-12 lg:flex-row">
-        <div className="relative mx-auto lg:mx-0">
-          <div className="relative h-[750px] w-[350px] rounded-[3rem] border-4 border-gray-800 bg-black p-3 shadow-2xl">
-            <div className="absolute inset-x-0 top-0 z-50 flex h-7 justify-center">
-              <div className="h-6 w-32 rounded-b-2xl bg-black"></div>
-            </div>
-
-            <div className="relative flex h-full w-full flex-col overflow-hidden rounded-[2.5rem] bg-white">
-              <div className="z-40 flex h-12 w-full items-end justify-between bg-white px-6 pb-2 text-xs font-medium">
-                <span>9:41</span>
-                <div className="flex items-center space-x-1.5">
-                  <Signal size={14} className={networkTier === 'Degraded' ? 'text-red-500' : 'text-black'} />
-                  {networkTier === '6G' ? (
-                    <span className="text-[10px] font-bold text-purple-600">6G</span>
-                  ) : (
-                    <span className="text-[10px] font-bold">5G</span>
-                  )}
-                  <Battery size={16} />
-                </div>
+    <div
+      className={
+        isNativeShell
+          ? 'min-h-screen bg-white font-sans'
+          : 'flex min-h-screen items-center justify-center bg-gray-50 p-8 font-sans'
+      }
+    >
+      <div
+        className={
+          isNativeShell
+            ? 'flex min-h-screen w-full flex-col bg-white'
+            : 'flex w-full max-w-6xl flex-col items-start gap-12 lg:flex-row'
+        }
+      >
+        <div className={isNativeShell ? 'w-full' : 'relative mx-auto lg:mx-0'}>
+          <div
+            className={
+              isNativeShell
+                ? 'relative w-full'
+                : 'relative h-[750px] w-[350px] rounded-[3rem] border-4 border-gray-800 bg-black p-3 shadow-2xl'
+            }
+          >
+            {!isNativeShell && (
+              <div className="absolute inset-x-0 top-0 z-50 flex h-7 justify-center">
+                <div className="h-6 w-32 rounded-b-2xl bg-black"></div>
               </div>
+            )}
+
+            <div
+              className={
+                isNativeShell
+                  ? 'relative flex min-h-screen w-full flex-col overflow-hidden bg-white'
+                  : 'relative flex h-full w-full flex-col overflow-hidden rounded-[2.5rem] bg-white'
+              }
+            >
+              {!isNativeShell && (
+                <div className="z-40 flex h-12 w-full items-end justify-between bg-white px-6 pb-2 text-xs font-medium">
+                  <span>9:41</span>
+                  <div className="flex items-center space-x-1.5">
+                    <Signal size={14} className={networkTier === 'Degraded' ? 'text-red-500' : 'text-black'} />
+                    {networkTier === '6G' ? (
+                      <span className="text-[10px] font-bold text-purple-600">6G</span>
+                    ) : (
+                      <span className="text-[10px] font-bold">5G</span>
+                    )}
+                    <Battery size={16} />
+                  </div>
+                </div>
+              )}
 
               <div className="relative z-30 flex items-center justify-between border-b border-gray-100 px-5 py-3">
                 <div className="flex items-center space-x-2">
@@ -1107,126 +1137,130 @@ export default function App() {
                 </div>
               )}
 
-              <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center">
-                <div className="h-1 w-32 rounded-full bg-black/20"></div>
-              </div>
+              {!isNativeShell && (
+                <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center">
+                  <div className="h-1 w-32 rounded-full bg-black/20"></div>
+                </div>
+              )}
             </div>
           </div>
         </div>
 
-        <div className="w-full flex-1 rounded-3xl border border-gray-100 bg-white p-8 shadow-xl lg:max-w-md">
-          <h2 className="mb-6 flex items-center text-2xl font-bold text-gray-800">
-            <Settings className="mr-2 text-blue-500" /> Presenter Controls
-          </h2>
+        {!isNativeShell && (
+          <div className="w-full flex-1 rounded-3xl border border-gray-100 bg-white p-8 shadow-xl lg:max-w-md">
+            <h2 className="mb-6 flex items-center text-2xl font-bold text-gray-800">
+              <Settings className="mr-2 text-blue-500" /> Presenter Controls
+            </h2>
 
-          {isIntent && (
-            <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-              Direct Intent is self-contained in the phone UI. Use the controls below only after switching back to the
-              Streaming or Gaming demos.
-            </div>
-          )}
+            {isIntent && (
+              <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
+                Direct Intent is self-contained in the phone UI. Use the controls below only after switching back to the
+                Streaming or Gaming demos.
+              </div>
+            )}
 
-          <div className="space-y-6">
-            <div className="rounded-xl border border-gray-100 bg-slate-50 p-4">
-              <h3 className="mb-2 font-bold text-slate-800">1. Choose Demo Experience</h3>
-              <p className="mb-3 text-sm text-slate-600">These presenter-side controls apply to the Streaming and Gaming demos only.</p>
-              <div className="grid grid-cols-2 gap-2">
+            <div className="space-y-6">
+              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4">
+                <h3 className="mb-2 font-bold text-slate-800">1. Choose Demo Experience</h3>
+                <p className="mb-3 text-sm text-slate-600">These presenter-side controls apply to the Streaming and Gaming demos only.</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <button
+                    type="button"
+                    onClick={() => handleExperienceChange('streaming')}
+                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isStreaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Streaming
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExperienceChange('gaming')}
+                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isGaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Gaming
+                  </button>
+                </div>
+              </div>
+
+              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
+                <h3 className="mb-2 font-bold text-blue-800">2. Initial State</h3>
+                <p className="mb-3 text-sm text-blue-600">{initialStateCopy}</p>
                 <button
-                  type="button"
-                  onClick={() => handleExperienceChange('streaming')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                    isStreaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-                  }`}
+                  onClick={resetNetwork}
+                  disabled={networkTier === '5G' || isIntent}
+                  className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
                 >
-                  Streaming
-                </button>
-                <button
-                  type="button"
-                  onClick={() => handleExperienceChange('gaming')}
-                  className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                    isGaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-                  }`}
-                >
-                  Gaming
+                  Reset to Standard 5G
                 </button>
               </div>
-            </div>
 
-            <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-              <h3 className="mb-2 font-bold text-blue-800">2. Initial State</h3>
-              <p className="mb-3 text-sm text-blue-600">{initialStateCopy}</p>
-              <button
-                onClick={resetNetwork}
-                disabled={networkTier === '5G' || isIntent}
-                className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-              >
-                Reset to Standard 5G
-              </button>
-            </div>
+              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
+                <h3 className="mb-2 font-bold text-red-800">3. Simulate Congestion</h3>
+                <p className="mb-3 text-sm text-red-600">{congestionCopy}</p>
+                <button
+                  onClick={triggerDegradation}
+                  disabled={networkTier !== '5G' || isIntent}
+                  className="w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
+                >
+                  Trigger Network Degradation
+                </button>
+              </div>
 
-            <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-              <h3 className="mb-2 font-bold text-red-800">3. Simulate Congestion</h3>
-              <p className="mb-3 text-sm text-red-600">{congestionCopy}</p>
-              <button
-                onClick={triggerDegradation}
-                disabled={networkTier !== '5G' || isIntent}
-                className="w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-              >
-                Trigger Network Degradation
-              </button>
-            </div>
-
-            <div
-              className={`rounded-xl border p-4 ${
-                isIntent
-                  ? 'border-slate-200 bg-slate-50'
-                  : isGaming
-                    ? 'border-cyan-100 bg-cyan-50'
-                    : 'border-purple-100 bg-purple-50'
-              }`}
-            >
-              <h3 className={`mb-2 font-bold ${isIntent ? 'text-slate-800' : isGaming ? 'text-cyan-800' : 'text-purple-800'}`}>
-                4. Intent Execution
-              </h3>
-              <p className={`mb-3 text-sm ${isIntent ? 'text-slate-600' : isGaming ? 'text-cyan-700' : 'text-purple-600'}`}>
-                {isIntent
-                  ? 'Direct Intent requests stay inside the stub console and do not allocate demo slices or alter network state.'
-                  : isGaming
-                    ? 'Accept the offer on the device to move the game session onto a premium 6G edge slice.'
-                    : 'Accept the offer on the device to allocate a premium 6G streaming slice.'}
-              </p>
               <div
-                className={`flex items-center space-x-2 rounded border bg-white p-2 text-sm font-medium ${
+                className={`rounded-xl border p-4 ${
                   isIntent
-                    ? 'border-slate-200 text-slate-600'
+                    ? 'border-slate-200 bg-slate-50'
                     : isGaming
-                      ? 'border-cyan-200 text-cyan-700'
-                      : 'border-purple-200 text-purple-700'
+                      ? 'border-cyan-100 bg-cyan-50'
+                      : 'border-purple-100 bg-purple-50'
                 }`}
               >
-                <div
-                  className={`h-3 w-3 rounded-full ${
-                    isIntent ? 'bg-slate-300' : networkTier === '6G' ? 'animate-pulse bg-green-500' : 'bg-gray-300'
-                  }`}
-                ></div>
-                <span>
+                <h3 className={`mb-2 font-bold ${isIntent ? 'text-slate-800' : isGaming ? 'text-cyan-800' : 'text-purple-800'}`}>
+                  4. Intent Execution
+                </h3>
+                <p className={`mb-3 text-sm ${isIntent ? 'text-slate-600' : isGaming ? 'text-cyan-700' : 'text-purple-600'}`}>
                   {isIntent
-                    ? 'Demo slice state unchanged'
-                    : `${isGaming ? '6G Edge Status' : '6G Slice Status'}: ${networkTier === '6G' ? 'ACTIVE' : 'INACTIVE'}`}
-                </span>
+                    ? 'Direct Intent requests stay inside the stub console and do not allocate demo slices or alter network state.'
+                    : isGaming
+                      ? 'Accept the offer on the device to move the game session onto a premium 6G edge slice.'
+                      : 'Accept the offer on the device to allocate a premium 6G streaming slice.'}
+                </p>
+                <div
+                  className={`flex items-center space-x-2 rounded border bg-white p-2 text-sm font-medium ${
+                    isIntent
+                      ? 'border-slate-200 text-slate-600'
+                      : isGaming
+                        ? 'border-cyan-200 text-cyan-700'
+                        : 'border-purple-200 text-purple-700'
+                  }`}
+                >
+                  <div
+                    className={`h-3 w-3 rounded-full ${
+                      isIntent ? 'bg-slate-300' : networkTier === '6G' ? 'animate-pulse bg-green-500' : 'bg-gray-300'
+                    }`}
+                  ></div>
+                  <span>
+                    {isIntent
+                      ? 'Demo slice state unchanged'
+                      : `${isGaming ? '6G Edge Status' : '6G Slice Status'}: ${networkTier === '6G' ? 'ACTIVE' : 'INACTIVE'}`}
+                  </span>
+                </div>
               </div>
             </div>
-          </div>
 
-          <div className="mt-8 border-t border-gray-100 pt-6 text-xs text-gray-400">
-            <strong>Architecture Note:</strong>{' '}
-            {isIntent
-              ? 'The direct intent tab is currently a local stub that mimics core-network acknowledgements without any backend integration.'
-              : `In production, the app calls the AI Agent Gateway to translate user intent (${
-                  isGaming ? '"fix my game lag"' : '"fix my buffering"'
-                }) into 3GPP QoS policies via the NEF/PCF.`}
+            <div className="mt-8 border-t border-gray-100 pt-6 text-xs text-gray-400">
+              <strong>Architecture Note:</strong>{' '}
+              {isIntent
+                ? 'The direct intent tab is currently a local stub that mimics core-network acknowledgements without any backend integration.'
+                : `In production, the app calls the AI Agent Gateway to translate user intent (${
+                    isGaming ? '"fix my game lag"' : '"fix my buffering"'
+                  }) into 3GPP QoS policies via the NEF/PCF.`}
+            </div>
           </div>
-        </div>
+        )}
       </div>
     </div>
   );
