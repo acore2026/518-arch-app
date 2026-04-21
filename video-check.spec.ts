@@ -1,7 +1,9 @@
 import { expect, test } from '@playwright/test';
 
-test('streaming, gaming, and direct intent demos render', async ({ page }) => {
+test('root app and admin route render the unified flow', async ({ page }) => {
   await page.goto('http://localhost:7100');
+
+  await expect(page.getByText('Presenter Controls')).toHaveCount(0);
 
   const video = page.getByTestId('streaming-video');
   await expect(video).toBeVisible();
@@ -21,21 +23,26 @@ test('streaming, gaming, and direct intent demos render', async ({ page }) => {
 
   const input = page.getByTestId('intent-input');
   await page.getByTestId('intent-suggest').click();
-  await expect(input).toHaveValue('Fix my buffering for this stream.');
+  await expect(input).toHaveValue('I want to play Nitro Racer with smooth 4K gameplay.');
+  await page.getByTestId('intent-send').click();
+
+  await expect(page.getByText('Compute Nearby')).toBeVisible();
+  await expect(page.getByTestId('intent-launch-card')).toBeVisible();
+  await expect(page.getByTestId('intent-launch-confirm')).toHaveText('Deduct & Launch');
+
+  await page.getByTestId('intent-launch-confirm').click();
+  await expect(page.getByText('Android launch only')).toBeVisible();
+  await expect(page.getByText('Moonlight handoff is available only inside the installed Android app.')).toBeVisible();
+
+  await input.fill('Fix my buffering for this stream.');
   await page.getByTestId('intent-send').click();
   await expect(page.getByText('Video policy ACK')).toBeVisible();
   await expect(page.getByText('premium streaming policy')).toBeVisible();
 
-  await input.fill('Please brew me a coffee.');
-  await page.getByTestId('intent-send').click();
-  await expect(page.getByText('Fallback ACK')).toBeVisible();
-  await expect(page.getByText('could not map it to a known policy template')).toBeVisible();
-
-  await page.getByTestId('experience-menu-button').click();
-  await page.getByTestId('experience-option-gaming').click();
-  await expect(page.getByText('Cyber Void: Cloud Edition')).toBeVisible();
-  await expect(page.getByText('Standard 5G (Best Effort)')).toBeVisible();
-  await expect(page.getByText('CONNECTION UNSTABLE')).toHaveCount(0);
+  await page.goto('http://localhost:7100/admin');
+  await expect(page.getByRole('heading', { level: 1, name: 'Presenter Controls' })).toBeVisible();
+  await expect(page.getByText('Internal Route')).toBeVisible();
+  await expect(page.getByTestId('admin-open-app')).toBeVisible();
 
   await page.screenshot({ path: 'test-results/integration-check.png' });
 });
