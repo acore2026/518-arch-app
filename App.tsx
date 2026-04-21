@@ -1,28 +1,33 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
 import { Capacitor } from '@capacitor/core';
+import { AppLauncher } from '@capacitor/app-launcher';
 import {
   AlertTriangle,
   ArrowLeft,
   ArrowRight,
-  Battery,
   CheckCircle2,
   Cpu,
   Crosshair,
+  Database,
   Gamepad2,
+  Globe2,
   Loader2,
+  Mic,
   Pause,
   Play,
+  SendHorizontal,
   Settings,
-  Signal,
   Wifi,
   Zap,
 } from 'lucide-react';
 
 type NetworkTier = '5G' | 'Degraded' | '6G';
 type Experience = 'streaming' | 'gaming' | 'intent';
+type AppRoute = 'app' | 'admin';
 type IntentCategory = 'buffering' | 'latency' | 'gaming' | 'slice' | 'unknown';
 type IntentRole = 'user' | 'network';
 type IntentStatus = 'sent' | 'processing' | 'complete';
+type IntentActionState = 'ready' | 'launching' | 'launched' | 'unavailable';
 
 type GameParticle = {
   x: number;
@@ -51,6 +56,14 @@ type CloudGameState = {
   deathTime: number;
 };
 
+type IntentActionCard = {
+  title: string;
+  description: string;
+  buttonLabel: string;
+  action: 'launch-moonlight';
+  state: IntentActionState;
+};
+
 type IntentMessage = {
   id: string;
   role: IntentRole;
@@ -59,15 +72,18 @@ type IntentMessage = {
   timestamp: string;
   status: IntentStatus;
   category?: IntentCategory;
+  actionCard?: IntentActionCard;
 };
 
 type StubIntentResult = {
   category: IntentCategory;
   title: string;
   text: string;
+  actionCard?: Omit<IntentActionCard, 'state'>;
 };
 
-const SUGGESTED_INTENT = 'Fix my buffering for this stream.';
+const MOONLIGHT_PACKAGE = 'com.limelight';
+const SUGGESTED_INTENT = 'I want to play Nitro Racer with smooth 4K gameplay.';
 
 function formatTimestamp() {
   return new Date().toLocaleTimeString([], {
@@ -76,8 +92,41 @@ function formatTimestamp() {
   });
 }
 
+function getRouteFromPath(pathname: string): AppRoute {
+  return pathname === '/admin' ? 'admin' : 'app';
+}
+
+function isGameLaunchIntent(normalized: string) {
+  return (
+    normalized.includes('game') ||
+    normalized.includes('gaming') ||
+    normalized.includes('nitro racer') ||
+    normalized.includes('moonlight') ||
+    (normalized.includes('play') &&
+      (normalized.includes('smooth') ||
+        normalized.includes('4k') ||
+        normalized.includes('fps') ||
+        normalized.includes('launch') ||
+        normalized.includes('cloud')))
+  );
+}
+
 function getStubIntentResult(intentText: string): StubIntentResult {
   const normalized = intentText.toLowerCase();
+
+  if (isGameLaunchIntent(normalized)) {
+    return {
+      category: 'gaming',
+      title: 'Compute Nearby',
+      text: "I've detected available 'Network Computing' capabilities nearby. Would you like me to hand this task over to the Cloud Orchestrator for a high-performance experience?",
+      actionCard: {
+        title: 'Compute Available',
+        description: 'Agent can deduct required compute resources from local Edge node for smooth 4K gameplay.',
+        buttonLabel: 'Deduct & Launch',
+        action: 'launch-moonlight',
+      },
+    };
+  }
 
   if (
     normalized.includes('buffer') ||
@@ -102,19 +151,6 @@ function getStubIntentResult(intentText: string): StubIntentResult {
       category: 'latency',
       title: 'Latency policy ACK',
       text: 'Stub core network would favor a low-latency path and tighten retransmission targets for this session.',
-    };
-  }
-
-  if (
-    normalized.includes('game') ||
-    normalized.includes('gaming') ||
-    normalized.includes('fps') ||
-    normalized.includes('input')
-  ) {
-    return {
-      category: 'gaming',
-      title: 'Gaming edge ACK',
-      text: 'Stub core network would pin the session to an edge-friendly routing profile optimized for cloud gaming.',
     };
   }
 
@@ -334,7 +370,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
   }, [gameLoop]);
 
   return (
-    <div className="relative flex w-full flex-col bg-gray-900 group">
+    <div className="group relative flex w-full flex-col bg-gray-900">
       <canvas
         ref={canvasRef}
         width="300"
@@ -349,7 +385,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
         }}
       />
 
-      <div className="absolute top-2 right-2 z-20 flex space-x-1">
+      <div className="absolute right-2 top-2 z-20 flex space-x-1">
         <span className="flex items-center rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
           <Gamepad2 size={10} className="mr-1" /> CLOUD
         </span>
@@ -361,7 +397,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
       </div>
 
       {networkTier === 'Degraded' && (
-        <div className="pointer-events-none absolute inset-0 top-0 flex h-[200px] flex-col items-center justify-center bg-red-900/30 z-10">
+        <div className="pointer-events-none absolute inset-0 top-0 z-10 flex h-[200px] flex-col items-center justify-center bg-red-900/30">
           <Wifi className="mb-2 animate-pulse text-red-500/80" size={48} />
           <span className="rounded bg-black/50 px-2 py-1 text-xs font-bold text-red-400">STREAM DEGRADED</span>
         </div>
@@ -370,7 +406,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
       <div className="flex w-full items-center justify-between bg-gray-800 p-4 px-8 pb-6">
         <button
           onPointerDown={() => moveShip('left')}
-          className="touch-none flex h-14 w-14 items-center justify-center rounded-full border border-gray-600 bg-gray-700 text-white shadow-lg transition-all active:scale-95 active:bg-gray-600"
+          className="flex h-14 w-14 touch-none items-center justify-center rounded-full border border-gray-600 bg-gray-700 text-white shadow-lg transition-all active:scale-95 active:bg-gray-600"
           aria-label="Move ship left"
         >
           <ArrowLeft size={28} />
@@ -393,7 +429,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
 
         <button
           onPointerDown={() => moveShip('right')}
-          className="touch-none flex h-14 w-14 items-center justify-center rounded-full border border-gray-600 bg-gray-700 text-white shadow-lg transition-all active:scale-95 active:bg-gray-600"
+          className="flex h-14 w-14 touch-none items-center justify-center rounded-full border border-gray-600 bg-gray-700 text-white shadow-lg transition-all active:scale-95 active:bg-gray-600"
           aria-label="Move ship right"
         >
           <ArrowRight size={28} />
@@ -404,6 +440,7 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
 }
 
 export default function App() {
+  const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname));
   const [experience, setExperience] = useState<Experience>('streaming');
   const [showExperienceMenu, setShowExperienceMenu] = useState(false);
   const [networkTier, setNetworkTier] = useState<NetworkTier>('5G');
@@ -418,8 +455,8 @@ export default function App() {
     {
       id: 'network-0',
       role: 'network',
-      title: 'Stub Core Network Ready',
-      text: 'Send a natural-language request directly to the core network. This tab is stubbed and does not change the demo state.',
+      title: 'NETAGENT',
+      text: "Hello! I'm your Network-Aware Agent. How can I help you today?",
       timestamp: formatTimestamp(),
       status: 'complete',
       category: 'unknown',
@@ -431,7 +468,9 @@ export default function App() {
   const successTimer = useRef<number | null>(null);
   const intentReplyTimer = useRef<number | null>(null);
   const intentMessageId = useRef(1);
+  const intentInputRef = useRef<HTMLInputElement | null>(null);
   const videoRef = useRef<HTMLVideoElement | null>(null);
+  const lastShowcaseExperience = useRef<'streaming' | 'gaming'>('streaming');
 
   const isStreaming = experience === 'streaming';
   const isGaming = experience === 'gaming';
@@ -454,6 +493,14 @@ export default function App() {
 
   const nextIntentMessageId = () => `intent-${intentMessageId.current++}`;
 
+  const navigate = (path: '/' | '/admin') => {
+    if (window.location.pathname !== path) {
+      window.history.pushState({}, '', path);
+    }
+    setRoute(getRouteFromPath(path));
+    setShowExperienceMenu(false);
+  };
+
   const resetNetwork = () => {
     clearNetworkTimers();
     setNetworkTier('5G');
@@ -469,9 +516,123 @@ export default function App() {
       setShowExperienceMenu(false);
       return;
     }
+
+    if (nextExperience !== 'intent') {
+      lastShowcaseExperience.current = nextExperience;
+    }
+
     setExperience(nextExperience);
     setShowExperienceMenu(false);
     resetNetwork();
+  };
+
+  const updateIntentMessage = (messageId: string, updater: (message: IntentMessage) => IntentMessage) => {
+    setIntentMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? updater(message) : message))
+    );
+  };
+
+  const appendNetworkIntentMessage = (title: string, text: string, category: IntentCategory = 'unknown') => {
+    setIntentMessages((messages) => [
+      ...messages,
+      {
+        id: nextIntentMessageId(),
+        role: 'network',
+        title,
+        text,
+        timestamp: formatTimestamp(),
+        status: 'complete',
+        category,
+      },
+    ]);
+  };
+
+  const handleMoonlightLaunch = async (messageId: string) => {
+    updateIntentMessage(messageId, (message) => ({
+      ...message,
+      actionCard: message.actionCard
+        ? {
+            ...message.actionCard,
+            state: 'launching',
+            buttonLabel: 'Launching...',
+          }
+        : undefined,
+    }));
+
+    if (Capacitor.getPlatform() !== 'android') {
+      updateIntentMessage(messageId, (message) => ({
+        ...message,
+        actionCard: message.actionCard
+          ? {
+              ...message.actionCard,
+              state: 'unavailable',
+              buttonLabel: 'Android Only',
+            }
+          : undefined,
+      }));
+      appendNetworkIntentMessage(
+        'Android launch only',
+        'Moonlight handoff is available only inside the installed Android app.',
+        'gaming'
+      );
+      return;
+    }
+
+    try {
+      const canOpen = await AppLauncher.canOpenUrl({ url: MOONLIGHT_PACKAGE });
+      if (!canOpen.value) {
+        updateIntentMessage(messageId, (message) => ({
+          ...message,
+          actionCard: message.actionCard
+            ? {
+                ...message.actionCard,
+                state: 'unavailable',
+                buttonLabel: 'Moonlight Missing',
+              }
+            : undefined,
+        }));
+        appendNetworkIntentMessage(
+          'Moonlight not found',
+          'Install Moonlight on this Android device to continue the high-performance handoff.',
+          'gaming'
+        );
+        return;
+      }
+
+      await AppLauncher.openUrl({ url: MOONLIGHT_PACKAGE });
+      updateIntentMessage(messageId, (message) => ({
+        ...message,
+        actionCard: message.actionCard
+          ? {
+              ...message.actionCard,
+              state: 'launched',
+              buttonLabel: 'Moonlight Opening',
+            }
+          : undefined,
+      }));
+      appendNetworkIntentMessage(
+        'Cloud handoff complete',
+        'Moonlight launch request sent. Android should now switch to Moonlight.',
+        'gaming'
+      );
+    } catch (error) {
+      console.error('Moonlight launch failed', error);
+      updateIntentMessage(messageId, (message) => ({
+        ...message,
+        actionCard: message.actionCard
+          ? {
+              ...message.actionCard,
+              state: 'unavailable',
+              buttonLabel: 'Launch Failed',
+            }
+          : undefined,
+      }));
+      appendNetworkIntentMessage(
+        'Launch failed',
+        'The Cloud Orchestrator handoff could not open Moonlight on this device.',
+        'gaming'
+      );
+    }
   };
 
   const triggerDegradation = () => {
@@ -524,8 +685,8 @@ export default function App() {
       {
         id: pendingId,
         role: 'network',
-        title: 'Processing Intent',
-        text: 'Stub core network is evaluating the request.',
+        title: 'NETAGENT',
+        text: 'Evaluating the request and checking nearby network-computing resources.',
         timestamp: formatTimestamp(),
         status: 'processing',
       },
@@ -547,6 +708,12 @@ export default function App() {
                 timestamp: formatTimestamp(),
                 status: 'complete',
                 category: stubResult.category,
+                actionCard: stubResult.actionCard
+                  ? {
+                      ...stubResult.actionCard,
+                      state: 'ready',
+                    }
+                  : undefined,
               }
             : message
         )
@@ -555,6 +722,16 @@ export default function App() {
       intentReplyTimer.current = null;
     }, 700);
   };
+
+  useEffect(() => {
+    const handlePopState = () => {
+      setRoute(getRouteFromPath(window.location.pathname));
+      setShowExperienceMenu(false);
+    };
+
+    window.addEventListener('popstate', handlePopState);
+    return () => window.removeEventListener('popstate', handlePopState);
+  }, []);
 
   useEffect(() => {
     if (!isStreaming || !videoRef.current) {
@@ -578,11 +755,6 @@ export default function App() {
     };
   }, []);
 
-  const appName = isStreaming ? 'StreamFlex' : isGaming ? 'CloudPlay' : 'IntentLink';
-  const isNativeShell = Capacitor.isNativePlatform();
-  const appAccent = isStreaming ? 'bg-blue-600' : isGaming ? 'bg-indigo-600' : 'bg-slate-900';
-  const appShape = isStreaming ? 'rounded-full' : 'rounded-lg';
-  const experienceButtonLabel = isStreaming ? 'Streaming' : isGaming ? 'Gaming' : 'Direct Intent';
   const modalAccent = isGaming
     ? {
         border: 'border-cyan-400',
@@ -602,568 +774,566 @@ export default function App() {
       };
 
   const initialStateCopy = isIntent
-    ? 'The intent tab is self-contained. Switch back to Streaming or Gaming to use the live network simulator.'
+    ? 'Direct Intent now performs a stubbed compute-discovery flow and can hand off to Moonlight on Android.'
     : isGaming
       ? 'Cloud gameplay starts on standard 5G with acceptable responsiveness.'
       : 'The stream starts on standard 5G best-effort delivery and plays smoothly.';
   const congestionCopy = isIntent
-    ? 'Congestion simulation is disabled while the direct intent console is active.'
+    ? 'Congestion simulation remains disabled while the Direct Intent console is active.'
     : isGaming
       ? 'Inject latency and packet loss. The session feels sluggish, then the 6G Edge offer appears after 4 seconds.'
       : 'Simulate tower congestion. Video quality collapses, buffering starts, then the upgrade offer appears after 3 seconds.';
 
-  return (
-    <div
-      className={
-        isNativeShell
-          ? 'min-h-screen bg-white font-sans'
-          : 'flex min-h-screen items-center justify-center bg-gray-50 p-8 font-sans'
-      }
-    >
-      <div
-        className={
-          isNativeShell
-            ? 'flex min-h-screen w-full flex-col bg-white'
-            : 'flex w-full max-w-6xl flex-col items-start gap-12 lg:flex-row'
-        }
+  const renderExperienceMenu = () => (
+    <div className="relative">
+      <button
+        type="button"
+        data-testid="experience-menu-button"
+        aria-expanded={showExperienceMenu}
+        onClick={() => setShowExperienceMenu((open) => !open)}
+        className="flex items-center gap-2 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
       >
-        <div className={isNativeShell ? 'w-full' : 'relative mx-auto lg:mx-0'}>
-          <div
-            className={
-              isNativeShell
-                ? 'relative w-full'
-                : 'relative h-[750px] w-[350px] rounded-[3rem] border-4 border-gray-800 bg-black p-3 shadow-2xl'
-            }
+        <Settings size={14} className="text-slate-500" />
+        <span>{isStreaming ? 'Streaming' : isGaming ? 'Gaming' : 'Direct Intent'}</span>
+      </button>
+
+      {showExperienceMenu && (
+        <div className="absolute right-0 top-[calc(100%+8px)] z-40 w-40 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
+          <button
+            type="button"
+            data-testid="experience-option-streaming"
+            onClick={() => handleExperienceChange('streaming')}
+            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
+              isStreaming ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+            }`}
           >
-            {!isNativeShell && (
-              <div className="absolute inset-x-0 top-0 z-50 flex h-7 justify-center">
-                <div className="h-6 w-32 rounded-b-2xl bg-black"></div>
-              </div>
-            )}
+            Streaming
+          </button>
+          <button
+            type="button"
+            data-testid="experience-option-gaming"
+            onClick={() => handleExperienceChange('gaming')}
+            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
+              isGaming ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            Gaming
+          </button>
+          <button
+            type="button"
+            data-testid="experience-option-intent"
+            onClick={() => handleExperienceChange('intent')}
+            className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
+              isIntent ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
+            }`}
+          >
+            Direct Intent
+          </button>
+        </div>
+      )}
+    </div>
+  );
 
+  const renderStreaming = () => (
+    <>
+      <div className="group relative aspect-video w-full overflow-hidden bg-black">
+        <video
+          ref={videoRef}
+          data-testid="streaming-video"
+          src="https://vjs.zencdn.net/v/oceans.mp4"
+          poster="https://vjs.zencdn.net/v/oceans.png"
+          className="absolute inset-0 h-full w-full object-cover transition-all duration-700"
+          style={{
+            filter: networkTier === 'Degraded' ? 'blur(6px) brightness(0.6)' : 'blur(0px) brightness(1)',
+          }}
+          autoPlay
+          loop
+          muted
+          playsInline
+          crossOrigin="anonymous"
+        />
+
+        <div className="absolute right-2 top-2 z-20 flex space-x-1">
+          <span className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">4K HDR</span>
+          {networkTier === '6G' && (
+            <span className="flex items-center rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-[0_0_10px_rgba(147,51,234,0.8)]">
+              <Zap size={10} className="mr-0.5" /> 6G BOOST
+            </span>
+          )}
+        </div>
+
+        {networkTier === 'Degraded' && (
+          <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
+            <Loader2 className="mb-2 animate-spin text-white" size={32} />
+            <p className="text-xs font-medium text-white">Buffering...</p>
+          </div>
+        )}
+
+        <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
+          <button
+            onClick={() => setIsPlaying(!isPlaying)}
+            className="z-30 text-white transition-colors hover:text-blue-400"
+            aria-label={isPlaying && networkTier !== 'Degraded' ? 'Pause video' : 'Play video'}
+          >
+            {isPlaying && networkTier !== 'Degraded' ? <Pause size={20} /> : <Play size={20} />}
+          </button>
+          <div className="mx-3 h-1 flex-1 overflow-hidden rounded-full bg-white/30">
+            <div className="h-full w-1/3 bg-blue-500"></div>
+          </div>
+          <Settings size={18} className="text-white" />
+        </div>
+      </div>
+
+      <div className="p-5">
+        <h2 className="mb-1 text-xl font-bold">Elden Ring: Shadow of the Erdtree - 4K Gameplay</h2>
+        <p className="mb-4 text-sm text-gray-500">1.2M views - 2 hours ago</p>
+
+        <div className="mb-6 flex space-x-3">
+          <button className="flex flex-1 items-center justify-center rounded-full bg-gray-100 py-2 text-sm font-medium">👍 145K</button>
+          <button className="flex-1 rounded-full bg-gray-100 py-2 text-sm font-medium">Share</button>
+        </div>
+
+        <div
+          className={`rounded-xl border p-4 transition-colors duration-500 ${
+            networkTier === '6G'
+              ? 'border-purple-200 bg-purple-50'
+              : networkTier === 'Degraded'
+                ? 'border-red-200 bg-red-50'
+                : 'border-gray-200 bg-gray-50'
+          }`}
+        >
+          <div className="flex items-center space-x-3">
             <div
-              className={
-                isNativeShell
-                  ? 'relative flex min-h-screen w-full flex-col overflow-hidden bg-white'
-                  : 'relative flex h-full w-full flex-col overflow-hidden rounded-[2.5rem] bg-white'
-              }
+              className={`rounded-full p-2 ${
+                networkTier === '6G'
+                  ? 'bg-purple-100 text-purple-600'
+                  : networkTier === 'Degraded'
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-blue-100 text-blue-600'
+              }`}
             >
-              {!isNativeShell && (
-                <div className="z-40 flex h-12 w-full items-end justify-between bg-white px-6 pb-2 text-xs font-medium">
-                  <span>9:41</span>
-                  <div className="flex items-center space-x-1.5">
-                    <Signal size={14} className={networkTier === 'Degraded' ? 'text-red-500' : 'text-black'} />
-                    {networkTier === '6G' ? (
-                      <span className="text-[10px] font-bold text-purple-600">6G</span>
-                    ) : (
-                      <span className="text-[10px] font-bold">5G</span>
-                    )}
-                    <Battery size={16} />
-                  </div>
-                </div>
-              )}
-
-              <div className="relative z-30 flex items-center justify-between border-b border-gray-100 px-5 py-3">
-                <div className="flex items-center space-x-2">
-                  <div className={`flex h-8 w-8 items-center justify-center ${appShape} ${appAccent} font-bold text-white`}>
-                    {isStreaming ? 'V' : isGaming ? <Gamepad2 size={18} /> : <Cpu size={18} />}
-                  </div>
-                  <h1 className="text-lg font-bold">{appName}</h1>
-                </div>
-                <div className="relative">
-                  <button
-                    type="button"
-                    data-testid="experience-menu-button"
-                    aria-expanded={showExperienceMenu}
-                    onClick={() => setShowExperienceMenu((open) => !open)}
-                    className="flex items-center gap-2 rounded-full border border-gray-200 bg-white px-3 py-1.5 text-[11px] font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-                  >
-                    <Settings size={14} className="text-slate-500" />
-                    <span>{experienceButtonLabel}</span>
-                  </button>
-
-                  {showExperienceMenu && (
-                    <div className="absolute right-0 top-[calc(100%+8px)] w-36 rounded-2xl border border-slate-200 bg-white p-1.5 shadow-xl">
-                      <button
-                        type="button"
-                        data-testid="experience-option-streaming"
-                        onClick={() => handleExperienceChange('streaming')}
-                        className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
-                          isStreaming ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        Streaming
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="experience-option-gaming"
-                        onClick={() => handleExperienceChange('gaming')}
-                        className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
-                          isGaming ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        Gaming
-                      </button>
-                      <button
-                        type="button"
-                        data-testid="experience-option-intent"
-                        onClick={() => handleExperienceChange('intent')}
-                        className={`flex w-full items-center rounded-xl px-3 py-2 text-left text-xs font-medium transition-colors ${
-                          isIntent ? 'bg-slate-900 text-white' : 'text-slate-700 hover:bg-slate-100'
-                        }`}
-                      >
-                        Direct Intent
-                      </button>
-                    </div>
-                  )}
-                </div>
-              </div>
-
-              <div
-                className={`flex-1 ${
-                  isIntent ? 'overflow-hidden bg-slate-50' : isGaming ? 'overflow-y-auto bg-gray-50 pb-8' : 'overflow-y-auto pb-8'
-                }`}
-                onClick={() => {
-                  if (showExperienceMenu) {
-                    setShowExperienceMenu(false);
-                  }
-                }}
-              >
-                {isStreaming ? (
-                  <>
-                    <div className="relative aspect-video w-full overflow-hidden bg-black group">
-                      <video
-                        ref={videoRef}
-                        data-testid="streaming-video"
-                        src="https://vjs.zencdn.net/v/oceans.mp4"
-                        poster="https://vjs.zencdn.net/v/oceans.png"
-                        className="absolute inset-0 h-full w-full object-cover transition-all duration-700"
-                        style={{
-                          filter: networkTier === 'Degraded' ? 'blur(6px) brightness(0.6)' : 'blur(0px) brightness(1)',
-                        }}
-                        autoPlay
-                        loop
-                        muted
-                        playsInline
-                        crossOrigin="anonymous"
-                      />
-
-                      <div className="absolute top-2 right-2 z-20 flex space-x-1">
-                        <span className="rounded bg-black/50 px-1.5 py-0.5 text-[10px] font-bold text-white backdrop-blur-sm">
-                          4K HDR
-                        </span>
-                        {networkTier === '6G' && (
-                          <span className="flex items-center rounded bg-purple-600/80 px-1.5 py-0.5 text-[10px] font-bold text-white shadow-[0_0_10px_rgba(147,51,234,0.8)]">
-                            <Zap size={10} className="mr-0.5" /> 6G BOOST
-                          </span>
-                        )}
-                      </div>
-
-                      {networkTier === 'Degraded' && (
-                        <div className="absolute inset-0 z-10 flex flex-col items-center justify-center bg-black/40">
-                          <Loader2 className="mb-2 animate-spin text-white" size={32} />
-                          <p className="text-xs font-medium text-white">Buffering...</p>
-                        </div>
-                      )}
-
-                      <div className="absolute inset-x-0 bottom-0 z-20 flex items-center justify-between bg-gradient-to-t from-black/80 to-transparent p-3 opacity-0 transition-opacity group-hover:opacity-100">
-                        <button
-                          onClick={() => setIsPlaying(!isPlaying)}
-                          className="z-30 text-white transition-colors hover:text-blue-400"
-                          aria-label={isPlaying && networkTier !== 'Degraded' ? 'Pause video' : 'Play video'}
-                        >
-                          {isPlaying && networkTier !== 'Degraded' ? <Pause size={20} /> : <Play size={20} />}
-                        </button>
-                        <div className="mx-3 h-1 flex-1 overflow-hidden rounded-full bg-white/30">
-                          <div className="h-full w-1/3 bg-blue-500"></div>
-                        </div>
-                        <Settings size={18} className="text-white" />
-                      </div>
-                    </div>
-
-                    <div className="p-5">
-                      <h2 className="mb-1 text-xl font-bold">Elden Ring: Shadow of the Erdtree - 4K Gameplay</h2>
-                      <p className="mb-4 text-sm text-gray-500">1.2M views - 2 hours ago</p>
-
-                      <div className="mb-6 flex space-x-3">
-                        <button className="flex flex-1 items-center justify-center rounded-full bg-gray-100 py-2 text-sm font-medium">
-                          👍 145K
-                        </button>
-                        <button className="flex-1 rounded-full bg-gray-100 py-2 text-sm font-medium">Share</button>
-                      </div>
-
-                      <div
-                        className={`rounded-xl border p-4 transition-colors duration-500 ${
-                          networkTier === '6G'
-                            ? 'border-purple-200 bg-purple-50'
-                            : networkTier === 'Degraded'
-                              ? 'border-red-200 bg-red-50'
-                              : 'border-gray-200 bg-gray-50'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`rounded-full p-2 ${
-                              networkTier === '6G'
-                                ? 'bg-purple-100 text-purple-600'
-                                : networkTier === 'Degraded'
-                                  ? 'bg-red-100 text-red-600'
-                                  : 'bg-blue-100 text-blue-600'
-                            }`}
-                          >
-                            {networkTier === '6G' ? (
-                              <Zap size={20} />
-                            ) : networkTier === 'Degraded' ? (
-                              <AlertTriangle size={20} />
-                            ) : (
-                              <Wifi size={20} />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">Current Connection</p>
-                            <p className="text-xs text-gray-600">
-                              {networkTier === '6G'
-                                ? 'Premium 6G Network Slice (Ultra-Low Latency)'
-                                : networkTier === 'Degraded'
-                                  ? 'Network congestion detected (buffering and low bitrate)'
-                                  : 'Standard 5G Network (Best Effort)'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div className="mt-6">
-                        <h3 className="mb-3 font-bold">Comments</h3>
-                        <div className="mb-4 flex items-start space-x-3">
-                          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-gray-300"></div>
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">
-                              Gamer123 <span className="text-[10px] font-normal text-gray-500">1 min ago</span>
-                            </p>
-                            <p className="text-sm text-gray-700">The graphics in this area are unbelievable!</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <div className="h-8 w-8 flex-shrink-0 rounded-full bg-gray-300"></div>
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">
-                              TechNerd <span className="text-[10px] font-normal text-gray-500">5 mins ago</span>
-                            </p>
-                            <p className="text-sm text-gray-700">Hope my network can handle streaming this later...</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : isGaming ? (
-                  <>
-                    <CloudGame networkTier={networkTier} />
-
-                    <div className="p-5">
-                      <h2 className="mb-1 text-xl font-bold text-gray-900">Cyber Void: Cloud Edition</h2>
-                      <p className="mb-4 flex items-center text-sm text-gray-500">
-                        <Crosshair size={14} className="mr-1" /> Cloud Server: US-East
-                      </p>
-
-                      <div
-                        className={`mb-6 rounded-xl border p-4 transition-colors duration-500 ${
-                          networkTier === '6G'
-                            ? 'border-purple-200 bg-purple-50'
-                            : networkTier === 'Degraded'
-                              ? 'border-red-200 bg-red-50'
-                              : 'border-blue-200 bg-blue-50'
-                        }`}
-                      >
-                        <div className="flex items-center space-x-3">
-                          <div
-                            className={`rounded-full p-2 ${
-                              networkTier === '6G'
-                                ? 'bg-purple-100 text-purple-600'
-                                : networkTier === 'Degraded'
-                                  ? 'bg-red-100 text-red-600'
-                                  : 'bg-blue-100 text-blue-600'
-                            }`}
-                          >
-                            {networkTier === '6G' ? (
-                              <Zap size={20} />
-                            ) : networkTier === 'Degraded' ? (
-                              <AlertTriangle size={20} />
-                            ) : (
-                              <Wifi size={20} />
-                            )}
-                          </div>
-                          <div>
-                            <p className="text-sm font-bold text-gray-900">QoS Status</p>
-                            <p className="text-xs text-gray-600">
-                              {networkTier === '6G'
-                                ? 'Premium 6G Edge (0ms jitter, 60fps)'
-                                : networkTier === 'Degraded'
-                                  ? 'Severe packet loss detected (input delayed)'
-                                  : 'Standard 5G (Best Effort)'}
-                            </p>
-                          </div>
-                        </div>
-                      </div>
-
-                      <div>
-                        <h3 className="mb-3 font-bold">Live Chat</h3>
-                        <div className="mb-4 flex items-start space-x-3">
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
-                            P1
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">
-                              ProGamer <span className="text-[10px] font-normal text-gray-500">Live</span>
-                            </p>
-                            <p className="text-sm text-gray-700">Cloud gaming really needs low latency.</p>
-                          </div>
-                        </div>
-                        <div className="flex items-start space-x-3">
-                          <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-600">
-                            T2
-                          </div>
-                          <div>
-                            <p className="text-xs font-bold text-gray-800">
-                              TechNerd <span className="text-[10px] font-normal text-gray-500">Live</span>
-                            </p>
-                            <p className="text-sm text-gray-700">Has anyone tried the new 6G slice API yet?</p>
-                          </div>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                ) : (
-                  <div className="flex h-full min-h-0 flex-col bg-slate-50">
-                    <div
-                      data-testid="intent-transcript"
-                      className="min-h-[180px] flex-1 space-y-3 overflow-y-auto p-4"
-                    >
-                      {intentMessages.map((message) => (
-                        <div
-                          key={message.id}
-                          className={`flex ${message.role === 'user' ? 'justify-end' : 'justify-start'}`}
-                        >
-                          <div
-                            className={`max-w-[85%] rounded-2xl px-4 py-3 shadow-sm ${
-                              message.role === 'user'
-                                ? 'bg-slate-900 text-white'
-                                : 'border border-slate-200 bg-white text-slate-800'
-                            }`}
-                          >
-                            <div className="mb-2 flex w-full items-start justify-between gap-2">
-                              <div className="min-w-0 flex-1 text-xs font-bold uppercase leading-tight tracking-wide">
-                                {message.role === 'user' ? 'user intent' : message.title ?? 'core network'}
-                              </div>
-                              <div
-                                className={`shrink-0 rounded-full px-2 py-1 text-[10px] font-semibold uppercase leading-none tracking-wide ${
-                                  message.role === 'user'
-                                    ? 'bg-slate-700 text-slate-200'
-                                    : message.status === 'processing'
-                                      ? 'bg-amber-50 text-amber-700'
-                                      : 'bg-slate-100 text-slate-500'
-                                }`}
-                              >
-                                {message.status === 'processing'
-                                  ? 'processing'
-                                  : message.category
-                                    ? message.category
-                                    : message.timestamp}
-                              </div>
-                            </div>
-                            <p className="text-sm leading-relaxed">{message.text}</p>
-                            <div
-                              className={`mt-2 text-[10px] ${
-                                message.role === 'user' ? 'text-slate-300' : 'text-slate-400'
-                              }`}
-                            >
-                              {message.timestamp}
-                            </div>
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-
-                    <div className="flex-none border-t border-slate-200 bg-white p-4">
-                      <label htmlFor="intent-input" className="mb-2 block text-xs font-bold uppercase tracking-wide text-slate-500">
-                        Intent Payload
-                      </label>
-                      <textarea
-                        id="intent-input"
-                        data-testid="intent-input"
-                        value={intentDraft}
-                        onChange={(event) => setIntentDraft(event.target.value)}
-                        onKeyDown={(event) => {
-                          if ((event.metaKey || event.ctrlKey) && event.key === 'Enter') {
-                            event.preventDefault();
-                            submitIntent(intentDraft);
-                          }
-                        }}
-                        rows={2}
-                        placeholder="Example: fix my buffering and prioritize this video session."
-                        className="w-full rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-slate-400 focus:bg-white"
-                      />
-                      <div className="mt-3 flex flex-col items-stretch gap-2">
-                        <p className="text-xs leading-relaxed text-slate-500">Stub only. No real backend request is sent.</p>
-                        <button
-                          type="button"
-                          data-testid="intent-suggest"
-                          onClick={() => setIntentDraft(SUGGESTED_INTENT)}
-                          className="w-full rounded-full border border-slate-200 bg-white px-4 py-2.5 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-100"
-                        >
-                          Suggest
-                        </button>
-                        <button
-                          type="button"
-                          data-testid="intent-send"
-                          disabled={isIntentSending || !intentDraft.trim()}
-                          onClick={() => submitIntent(intentDraft)}
-                          className="w-full rounded-full bg-slate-900 px-4 py-2.5 text-sm font-semibold text-white transition-colors hover:bg-slate-800 disabled:cursor-not-allowed disabled:bg-slate-300"
-                        >
-                          {isIntentSending ? 'Sending...' : 'Send Intent'}
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-              {!isIntent && showModal && !modalExpanded && (
-                <div className="absolute inset-x-4 top-[132px] z-50 animate-[slideDown_0.3s_ease-out] transform transition-all">
-                  <div
-                    className={`flex cursor-pointer items-center justify-between rounded-2xl border-2 bg-white p-3 shadow-xl transition-colors hover:bg-gray-50 ${modalAccent.border}`}
-                    onClick={() => setModalExpanded(true)}
-                  >
-                    <div className="flex items-center space-x-3">
-                      <div className={`animate-pulse rounded-full p-2 ${modalAccent.chip}`}>
-                        {isGaming ? <Gamepad2 size={18} /> : <Zap size={18} />}
-                      </div>
-                      <div>
-                        <p className="text-sm font-bold text-gray-900">
-                          {isGaming ? 'Input Latency High' : 'Network Lag Detected'}
-                        </p>
-                        <p className={`text-xs font-medium ${isGaming ? 'text-cyan-600' : 'text-purple-600'}`}>
-                          {isGaming ? 'Tap to activate 6G Edge Boost' : 'Tap to activate 6G Boost'}
-                        </p>
-                      </div>
-                    </div>
-                    <div className={`rounded-full px-4 py-2 text-xs font-bold text-white ${modalAccent.button}`}>
-                      {isGaming ? 'Fix Lag' : 'Fix'}
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {!isIntent && showModal && modalExpanded && (
-                <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
-                  <div
-                    className="absolute inset-0 bg-black/60 backdrop-blur-sm"
-                    onClick={() => {
-                      setShowModal(false);
-                      setModalExpanded(false);
-                    }}
-                  ></div>
-
-                  <div className="relative z-10 w-full animate-[slideUp_0.3s_ease-out] transform rounded-3xl bg-white p-6 shadow-2xl transition-all">
-                    {!isUpgrading && !upgradeSuccess ? (
-                      <>
-                        <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${modalAccent.chip}`}>
-                          <Cpu size={24} />
-                        </div>
-                        <h3 className="mb-2 text-center text-xl font-bold">
-                          {isGaming ? 'Enhance Gaming Session?' : 'Enhance Your Experience?'}
-                        </h3>
-                        <p className="mb-6 text-center text-sm text-gray-500">
-                          {isGaming ? (
-                            <>
-                              Our network AI detected input latency. Migrate this session to a <strong>6G Edge Node</strong>{' '}
-                              for guaranteed 60 FPS and ultra-low ping?
-                            </>
-                          ) : (
-                            <>
-                              Our network AI detected lag. Activate a dedicated <strong>6G Premium Slice</strong> for
-                              guaranteed 4K streaming and zero buffering?
-                            </>
-                          )}
-                        </p>
-
-                        <div className="mb-6 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-3">
-                          <span className="text-sm font-medium text-gray-700">Cost</span>
-                          <span className={`text-sm font-bold ${modalAccent.price}`}>$0.99 / hr</span>
-                        </div>
-
-                        <div className="space-y-3">
-                          <button
-                            onClick={handleUpgrade}
-                            className={`w-full rounded-xl bg-gradient-to-r px-4 py-3.5 font-bold text-white shadow-lg transition-all active:scale-[0.98] ${modalAccent.gradient} ${modalAccent.shadow}`}
-                          >
-                            {isGaming ? 'Activate 6G Edge Boost' : 'Activate 6G Boost'}
-                          </button>
-                          <button
-                            onClick={() => {
-                              setShowModal(false);
-                              setModalExpanded(false);
-                            }}
-                            className="w-full rounded-xl border border-gray-200 bg-white py-3 font-medium text-gray-500 transition-colors hover:bg-gray-50"
-                          >
-                            Continue with lag
-                          </button>
-                        </div>
-                      </>
-                    ) : upgradeSuccess ? (
-                      <div className="py-6 text-center">
-                        <CheckCircle2 size={48} className="mx-auto mb-4 animate-[bounce_0.5s_ease-in-out] text-green-500" />
-                        <h3 className="mb-2 text-xl font-bold">{isGaming ? '6G Edge Activated!' : '6G Boost Activated!'}</h3>
-                        <p className="text-sm text-gray-500">
-                          {isGaming
-                            ? 'Session migrated. Enjoy zero latency.'
-                            : 'Your network slice has been upgraded. Enjoy seamless 4K.'}
-                        </p>
-                      </div>
-                    ) : (
-                      <div className="py-8 text-center">
-                        <Loader2
-                          size={40}
-                          className={`mx-auto mb-4 animate-spin ${isGaming ? 'text-cyan-600' : 'text-purple-600'}`}
-                        />
-                        <h3 className="mb-2 text-lg font-bold">
-                          {isGaming ? 'Negotiating Intent...' : 'Negotiating Network Intent...'}
-                        </h3>
-                        <p className="text-xs text-gray-500">
-                          {isGaming ? 'Contacting 6G Core UPF / Edge Server' : 'Contacting 6G Core AI Agent Gateway'}
-                        </p>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              )}
-
-              {!isNativeShell && (
-                <div className="absolute inset-x-0 bottom-2 z-40 flex justify-center">
-                  <div className="h-1 w-32 rounded-full bg-black/20"></div>
-                </div>
-              )}
+              {networkTier === '6G' ? <Zap size={20} /> : networkTier === 'Degraded' ? <AlertTriangle size={20} /> : <Wifi size={20} />}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">Current Connection</p>
+              <p className="text-xs text-gray-600">
+                {networkTier === '6G'
+                  ? 'Premium 6G Network Slice (Ultra-Low Latency)'
+                  : networkTier === 'Degraded'
+                    ? 'Network congestion detected (buffering and low bitrate)'
+                    : 'Standard 5G Network (Best Effort)'}
+              </p>
             </div>
           </div>
         </div>
 
-        {!isNativeShell && (
-          <div className="w-full flex-1 rounded-3xl border border-gray-100 bg-white p-8 shadow-xl lg:max-w-md">
+        <div className="mt-6">
+          <h3 className="mb-3 font-bold">Comments</h3>
+          <div className="mb-4 flex items-start space-x-3">
+            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-gray-300"></div>
+            <div>
+              <p className="text-xs font-bold text-gray-800">
+                Gamer123 <span className="text-[10px] font-normal text-gray-500">1 min ago</span>
+              </p>
+              <p className="text-sm text-gray-700">The graphics in this area are unbelievable!</p>
+            </div>
+          </div>
+          <div className="flex items-start space-x-3">
+            <div className="h-8 w-8 flex-shrink-0 rounded-full bg-gray-300"></div>
+            <div>
+              <p className="text-xs font-bold text-gray-800">
+                TechNerd <span className="text-[10px] font-normal text-gray-500">5 mins ago</span>
+              </p>
+              <p className="text-sm text-gray-700">Hope my network can handle streaming this later...</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderGaming = () => (
+    <>
+      <CloudGame networkTier={networkTier} />
+
+      <div className="p-5">
+        <h2 className="mb-1 text-xl font-bold text-gray-900">Cyber Void: Cloud Edition</h2>
+        <p className="mb-4 flex items-center text-sm text-gray-500">
+          <Crosshair size={14} className="mr-1" /> Cloud Server: US-East
+        </p>
+
+        <div
+          className={`mb-6 rounded-xl border p-4 transition-colors duration-500 ${
+            networkTier === '6G'
+              ? 'border-purple-200 bg-purple-50'
+              : networkTier === 'Degraded'
+                ? 'border-red-200 bg-red-50'
+                : 'border-blue-200 bg-blue-50'
+          }`}
+        >
+          <div className="flex items-center space-x-3">
+            <div
+              className={`rounded-full p-2 ${
+                networkTier === '6G'
+                  ? 'bg-purple-100 text-purple-600'
+                  : networkTier === 'Degraded'
+                    ? 'bg-red-100 text-red-600'
+                    : 'bg-blue-100 text-blue-600'
+              }`}
+            >
+              {networkTier === '6G' ? <Zap size={20} /> : networkTier === 'Degraded' ? <AlertTriangle size={20} /> : <Wifi size={20} />}
+            </div>
+            <div>
+              <p className="text-sm font-bold text-gray-900">QoS Status</p>
+              <p className="text-xs text-gray-600">
+                {networkTier === '6G'
+                  ? 'Premium 6G Edge (0ms jitter, 60fps)'
+                  : networkTier === 'Degraded'
+                    ? 'Severe packet loss detected (input delayed)'
+                    : 'Standard 5G (Best Effort)'}
+              </p>
+            </div>
+          </div>
+        </div>
+
+        <div>
+          <h3 className="mb-3 font-bold">Live Chat</h3>
+          <div className="mb-4 flex items-start space-x-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-blue-100 text-xs font-bold text-blue-600">
+              P1
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-800">
+                ProGamer <span className="text-[10px] font-normal text-gray-500">Live</span>
+              </p>
+              <p className="text-sm text-gray-700">Cloud gaming really needs low latency.</p>
+            </div>
+          </div>
+          <div className="flex items-start space-x-3">
+            <div className="flex h-8 w-8 flex-shrink-0 items-center justify-center rounded-full bg-purple-100 text-xs font-bold text-purple-600">
+              T2
+            </div>
+            <div>
+              <p className="text-xs font-bold text-gray-800">
+                TechNerd <span className="text-[10px] font-normal text-gray-500">Live</span>
+              </p>
+              <p className="text-sm text-gray-700">Has anyone tried the new 6G slice API yet?</p>
+            </div>
+          </div>
+        </div>
+      </div>
+    </>
+  );
+
+  const renderIntentMessage = (message: IntentMessage) => {
+    const isUser = message.role === 'user';
+    const actionState = message.actionCard?.state;
+    const isActionDisabled = actionState === 'launching' || actionState === 'launched' || actionState === 'unavailable';
+
+    return (
+      <div key={message.id} className={`flex ${isUser ? 'justify-end' : 'justify-start'}`}>
+        <div className={`max-w-[84%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
+          <div
+            className={`rounded-[26px] px-5 py-4 shadow-sm ${
+              isUser ? 'rounded-br-md bg-[#3568e9] text-white' : 'rounded-bl-md bg-slate-100 text-slate-900'
+            }`}
+          >
+            {!isUser && message.title && <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{message.title}</div>}
+            <p className="text-[17px] leading-8">{message.text}</p>
+
+            {message.actionCard && (
+              <div
+                data-testid="intent-launch-card"
+                className="mt-5 rounded-[24px] border border-blue-100 bg-white p-4 text-left text-slate-900 shadow-sm"
+              >
+                <div className="flex items-start gap-3">
+                  <div className="flex h-11 w-11 shrink-0 items-center justify-center rounded-2xl bg-blue-50 text-blue-600">
+                    <Database size={22} />
+                  </div>
+                  <div className="min-w-0">
+                    <h3 className="text-lg font-bold">{message.actionCard.title}</h3>
+                    <p className="mt-1 text-sm leading-6 text-slate-500">{message.actionCard.description}</p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  data-testid="intent-launch-confirm"
+                  disabled={isActionDisabled}
+                  onClick={() => handleMoonlightLaunch(message.id)}
+                  className="mt-4 w-full rounded-2xl bg-[#3568e9] px-4 py-3 text-base font-semibold text-white transition-colors hover:bg-[#2d59ca] disabled:cursor-not-allowed disabled:bg-slate-300"
+                >
+                  {actionState === 'launching' ? 'Launching...' : message.actionCard.buttonLabel}
+                </button>
+              </div>
+            )}
+          </div>
+          <div className={`mt-2 px-1 text-xs ${isUser ? 'text-blue-300' : 'text-slate-400'}`}>{message.timestamp}</div>
+        </div>
+      </div>
+    );
+  };
+
+  const renderIntent = () => (
+    <div className="flex min-h-[780px] flex-col bg-[#fbfcff]">
+      <div className="flex items-center justify-between border-b border-slate-200 px-4 py-3">
+        <button
+          type="button"
+          onClick={() => handleExperienceChange(lastShowcaseExperience.current)}
+          className="flex items-center gap-1 text-base font-medium text-blue-600 transition-colors hover:text-blue-700"
+        >
+          <ArrowLeft size={18} />
+          <span>Back</span>
+        </button>
+        <div className="flex flex-col items-center">
+          <div className="flex h-10 w-10 items-center justify-center rounded-full bg-[#3568e9] text-white shadow-sm">
+            <Globe2 size={19} />
+          </div>
+          <span className="mt-1 text-xs font-semibold tracking-[0.22em] text-slate-400">NETAGENT</span>
+        </div>
+        {renderExperienceMenu()}
+      </div>
+
+      <div
+        data-testid="intent-transcript"
+        className="flex-1 space-y-6 overflow-y-auto bg-white px-4 py-5"
+        onClick={() => {
+          if (showExperienceMenu) {
+            setShowExperienceMenu(false);
+          }
+        }}
+      >
+        {intentMessages.map(renderIntentMessage)}
+      </div>
+
+      <div className="border-t border-slate-200 bg-white px-4 pb-4 pt-3">
+        <div className="flex items-center gap-1.5">
+          <button
+            type="button"
+            data-testid="intent-suggest"
+            aria-label="Insert suggested intent"
+            onClick={() => {
+              setIntentDraft(SUGGESTED_INTENT);
+              window.requestAnimationFrame(() => intentInputRef.current?.focus());
+            }}
+            className="flex h-8 w-8 shrink-0 items-center justify-center rounded-full bg-slate-100 text-sm font-bold tracking-tight text-slate-500 transition-colors hover:bg-slate-200"
+          >
+            ...
+          </button>
+          <div className="relative min-w-0 flex-1">
+            <input
+              ref={intentInputRef}
+              id="intent-input"
+              data-testid="intent-input"
+              type="text"
+              value={intentDraft}
+              onChange={(event) => setIntentDraft(event.target.value)}
+              onKeyDown={(event) => {
+                if (event.key === 'Enter') {
+                  event.preventDefault();
+                  submitIntent(intentDraft);
+                }
+              }}
+              placeholder="Message NetAgent..."
+              className="h-11 w-full rounded-full border border-slate-200 bg-slate-50 pl-3.5 pr-12 text-[15px] text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-sky-300 focus:bg-white focus:ring-2 focus:ring-sky-100"
+            />
+            <button
+              type="button"
+              data-testid="intent-send"
+              aria-label="Send intent"
+              disabled={isIntentSending || !intentDraft.trim()}
+              onClick={() => submitIntent(intentDraft)}
+              className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-sky-400 text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
+            >
+              {isIntentSending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizontal size={16} />}
+            </button>
+          </div>
+          <button
+            type="button"
+            aria-label="Voice input unavailable"
+            onClick={() => intentInputRef.current?.focus()}
+            className="flex h-9 w-9 shrink-0 items-center justify-center rounded-full bg-white text-sky-500 transition-colors hover:bg-sky-50"
+          >
+            <Mic size={20} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderRootPage = () => (
+    <div className="min-h-screen bg-slate-100 px-4 py-6 font-sans text-slate-900 sm:px-6">
+      <div className="mx-auto w-full max-w-md">
+        <div className="relative overflow-hidden rounded-[32px] border border-slate-200 bg-white shadow-[0_24px_80px_rgba(15,23,42,0.08)]">
+          {!isIntent && (
+            <div className="relative z-30 flex items-center justify-between border-b border-gray-100 px-5 py-3">
+              <div className="flex items-center space-x-2">
+                <div
+                  className={`flex h-8 w-8 items-center justify-center font-bold text-white ${
+                    isStreaming ? 'rounded-full bg-blue-600' : 'rounded-lg bg-indigo-600'
+                  }`}
+                >
+                  {isStreaming ? 'V' : <Gamepad2 size={18} />}
+                </div>
+                <h1 className="text-lg font-bold">{isStreaming ? 'StreamFlex' : 'CloudPlay'}</h1>
+              </div>
+              {renderExperienceMenu()}
+            </div>
+          )}
+
+          <div
+            className={`relative ${isIntent ? 'bg-white' : isGaming ? 'overflow-y-auto bg-gray-50 pb-8' : 'overflow-y-auto pb-8'}`}
+            onClick={() => {
+              if (showExperienceMenu && !isIntent) {
+                setShowExperienceMenu(false);
+              }
+            }}
+          >
+            {isStreaming ? renderStreaming() : isGaming ? renderGaming() : renderIntent()}
+
+            {!isIntent && showModal && !modalExpanded && (
+              <div className="absolute inset-x-4 top-[132px] z-50 animate-[slideDown_0.3s_ease-out] transform transition-all">
+                <div
+                  className={`flex cursor-pointer items-center justify-between rounded-2xl border-2 bg-white p-3 shadow-xl transition-colors hover:bg-gray-50 ${modalAccent.border}`}
+                  onClick={() => setModalExpanded(true)}
+                >
+                  <div className="flex items-center space-x-3">
+                    <div className={`animate-pulse rounded-full p-2 ${modalAccent.chip}`}>
+                      {isGaming ? <Gamepad2 size={18} /> : <Zap size={18} />}
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-gray-900">{isGaming ? 'Input Latency High' : 'Network Lag Detected'}</p>
+                      <p className={`text-xs font-medium ${isGaming ? 'text-cyan-600' : 'text-purple-600'}`}>
+                        {isGaming ? 'Tap to activate 6G Edge Boost' : 'Tap to activate 6G Boost'}
+                      </p>
+                    </div>
+                  </div>
+                  <div className={`rounded-full px-4 py-2 text-xs font-bold text-white ${modalAccent.button}`}>
+                    {isGaming ? 'Fix Lag' : 'Fix'}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {!isIntent && showModal && modalExpanded && (
+              <div className="absolute inset-0 z-50 flex items-center justify-center p-4">
+                <div
+                  className="absolute inset-0 bg-black/60 backdrop-blur-sm"
+                  onClick={() => {
+                    setShowModal(false);
+                    setModalExpanded(false);
+                  }}
+                ></div>
+
+                <div className="relative z-10 w-full animate-[slideUp_0.3s_ease-out] transform rounded-3xl bg-white p-6 shadow-2xl transition-all">
+                  {!isUpgrading && !upgradeSuccess ? (
+                    <>
+                      <div className={`mx-auto mb-4 flex h-12 w-12 items-center justify-center rounded-full ${modalAccent.chip}`}>
+                        <Cpu size={24} />
+                      </div>
+                      <h3 className="mb-2 text-center text-xl font-bold">
+                        {isGaming ? 'Enhance Gaming Session?' : 'Enhance Your Experience?'}
+                      </h3>
+                      <p className="mb-6 text-center text-sm text-gray-500">
+                        {isGaming ? (
+                          <>
+                            Our network AI detected input latency. Migrate this session to a <strong>6G Edge Node</strong> for
+                            guaranteed 60 FPS and ultra-low ping?
+                          </>
+                        ) : (
+                          <>
+                            Our network AI detected lag. Activate a dedicated <strong>6G Premium Slice</strong> for guaranteed 4K
+                            streaming and zero buffering?
+                          </>
+                        )}
+                      </p>
+
+                      <div className="mb-6 flex items-center justify-between rounded-xl border border-gray-100 bg-gray-50 p-3">
+                        <span className="text-sm font-medium text-gray-700">Cost</span>
+                        <span className={`text-sm font-bold ${modalAccent.price}`}>$0.99 / hr</span>
+                      </div>
+
+                      <div className="space-y-3">
+                        <button
+                          onClick={handleUpgrade}
+                          className={`w-full rounded-xl bg-gradient-to-r px-4 py-3.5 font-bold text-white shadow-lg transition-all active:scale-[0.98] ${modalAccent.gradient} ${modalAccent.shadow}`}
+                        >
+                          {isGaming ? 'Activate 6G Edge Boost' : 'Activate 6G Boost'}
+                        </button>
+                        <button
+                          onClick={() => {
+                            setShowModal(false);
+                            setModalExpanded(false);
+                          }}
+                          className="w-full rounded-xl border border-gray-200 bg-white py-3 font-medium text-gray-500 transition-colors hover:bg-gray-50"
+                        >
+                          Continue with lag
+                        </button>
+                      </div>
+                    </>
+                  ) : upgradeSuccess ? (
+                    <div className="py-6 text-center">
+                      <CheckCircle2 size={48} className="mx-auto mb-4 animate-[bounce_0.5s_ease-in-out] text-green-500" />
+                      <h3 className="mb-2 text-xl font-bold">{isGaming ? '6G Edge Activated!' : '6G Boost Activated!'}</h3>
+                      <p className="text-sm text-gray-500">
+                        {isGaming ? 'Session migrated. Enjoy zero latency.' : 'Your network slice has been upgraded. Enjoy seamless 4K.'}
+                      </p>
+                    </div>
+                  ) : (
+                    <div className="py-8 text-center">
+                      <Loader2 size={40} className={`mx-auto mb-4 animate-spin ${isGaming ? 'text-cyan-600' : 'text-purple-600'}`} />
+                      <h3 className="mb-2 text-lg font-bold">{isGaming ? 'Negotiating Intent...' : 'Negotiating Network Intent...'}</h3>
+                      <p className="text-xs text-gray-500">
+                        {isGaming ? 'Contacting 6G Core UPF / Edge Server' : 'Contacting 6G Core AI Agent Gateway'}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        </div>
+      </div>
+    </div>
+  );
+
+  const renderAdminPage = () => (
+    <div className="min-h-screen bg-slate-100 px-4 py-8 font-sans text-slate-900 sm:px-6">
+      <div className="mx-auto max-w-5xl">
+        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
+          <div>
+            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-blue-600">Internal Route</p>
+            <h1 className="mt-1 text-3xl font-bold text-slate-900">Presenter Controls</h1>
+            <p className="mt-2 max-w-2xl text-sm text-slate-500">
+              This admin route hosts the old presenter-side controls. The end-user app at <code>/</code> no longer shows them.
+            </p>
+          </div>
+          <button
+            type="button"
+            data-testid="admin-open-app"
+            onClick={() => navigate('/')}
+            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
+          >
+            Open App
+          </button>
+        </div>
+
+        <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
+          <div className="rounded-3xl border border-gray-100 bg-white p-8 shadow-xl">
             <h2 className="mb-6 flex items-center text-2xl font-bold text-gray-800">
               <Settings className="mr-2 text-blue-500" /> Presenter Controls
             </h2>
 
             {isIntent && (
               <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Direct Intent is self-contained in the phone UI. Use the controls below only after switching back to the
-                Streaming or Gaming demos.
+                Direct Intent now supports a stubbed Moonlight handoff. Switch back to Streaming or Gaming to use the live network simulator controls.
               </div>
             )}
 
             <div className="space-y-6">
               <div className="rounded-xl border border-gray-100 bg-slate-50 p-4">
                 <h3 className="mb-2 font-bold text-slate-800">1. Choose Demo Experience</h3>
-                <p className="mb-3 text-sm text-slate-600">These presenter-side controls apply to the Streaming and Gaming demos only.</p>
-                <div className="grid grid-cols-2 gap-2">
+                <p className="mb-3 text-sm text-slate-600">These admin controls apply to the Streaming and Gaming demos only.</p>
+                <div className="grid grid-cols-3 gap-2">
                   <button
                     type="button"
                     onClick={() => handleExperienceChange('streaming')}
@@ -1181,6 +1351,15 @@ export default function App() {
                     }`}
                   >
                     Gaming
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => handleExperienceChange('intent')}
+                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
+                      isIntent ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
+                    }`}
+                  >
+                    Intent
                   </button>
                 </div>
               </div>
@@ -1223,7 +1402,7 @@ export default function App() {
                 </h3>
                 <p className={`mb-3 text-sm ${isIntent ? 'text-slate-600' : isGaming ? 'text-cyan-700' : 'text-purple-600'}`}>
                   {isIntent
-                    ? 'Direct Intent requests stay inside the stub console and do not allocate demo slices or alter network state.'
+                    ? 'Game-launch requests stay stubbed until the user confirms the compute card, then the Android app can hand off to Moonlight.'
                     : isGaming
                       ? 'Accept the offer on the device to move the game session onto a premium 6G edge slice.'
                       : 'Accept the offer on the device to allocate a premium 6G streaming slice.'}
@@ -1244,7 +1423,7 @@ export default function App() {
                   ></div>
                   <span>
                     {isIntent
-                      ? 'Demo slice state unchanged'
+                      ? 'Moonlight handoff available only in Android'
                       : `${isGaming ? '6G Edge Status' : '6G Slice Status'}: ${networkTier === '6G' ? 'ACTIVE' : 'INACTIVE'}`}
                   </span>
                 </div>
@@ -1254,14 +1433,63 @@ export default function App() {
             <div className="mt-8 border-t border-gray-100 pt-6 text-xs text-gray-400">
               <strong>Architecture Note:</strong>{' '}
               {isIntent
-                ? 'The direct intent tab is currently a local stub that mimics core-network acknowledgements without any backend integration.'
+                ? 'Direct Intent now mimics compute discovery and a Cloud Orchestrator handoff, then delegates to Moonlight through Capacitor on Android.'
                 : `In production, the app calls the AI Agent Gateway to translate user intent (${
                     isGaming ? '"fix my game lag"' : '"fix my buffering"'
                   }) into 3GPP QoS policies via the NEF/PCF.`}
             </div>
           </div>
-        )}
+
+          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
+            <div className="mb-6 flex items-center gap-3">
+              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
+                <Cpu size={22} />
+              </div>
+              <div>
+                <h2 className="text-xl font-bold text-slate-900">Live Session State</h2>
+                <p className="text-sm text-slate-500">This reflects the same in-memory SPA state used by the end-user route.</p>
+              </div>
+            </div>
+
+            <div className="grid gap-4 sm:grid-cols-2">
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current Experience</div>
+                <div className="mt-2 text-lg font-bold text-slate-900">
+                  {isStreaming ? 'Streaming' : isGaming ? 'Gaming' : 'Direct Intent'}
+                </div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Network Tier</div>
+                <div className="mt-2 text-lg font-bold text-slate-900">{networkTier}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Intent Messages</div>
+                <div className="mt-2 text-lg font-bold text-slate-900">{intentMessages.length}</div>
+              </div>
+              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Moonlight Target</div>
+                <div className="mt-2 break-all text-lg font-bold text-slate-900">{MOONLIGHT_PACKAGE}</div>
+              </div>
+            </div>
+
+            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
+              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Latest Agent Transcript</h3>
+              <div className="mt-3 space-y-3">
+                {intentMessages.slice(-3).map((message) => (
+                  <div key={message.id} className="rounded-2xl border border-slate-200 bg-white p-3">
+                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
+                      {message.role === 'user' ? 'User' : message.title ?? 'Network'}
+                    </div>
+                    <p className="mt-1 text-sm leading-6 text-slate-700">{message.text}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          </div>
+        </div>
       </div>
     </div>
   );
+
+  return route === 'admin' ? renderAdminPage() : renderRootPage();
 }
