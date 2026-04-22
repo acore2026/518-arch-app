@@ -1,5 +1,5 @@
 import React, { useCallback, useEffect, useRef, useState } from 'react';
-import { Capacitor } from '@capacitor/core';
+import { Capacitor, registerPlugin } from '@capacitor/core';
 import { AppLauncher } from '@capacitor/app-launcher';
 import {
   AlertTriangle,
@@ -82,8 +82,20 @@ type StubIntentResult = {
   actionCard?: Omit<IntentActionCard, 'state'>;
 };
 
+type DemoFlowPlugin = {
+  ensureNotificationPermission(): Promise<{ granted: boolean }>;
+  scheduleLatencyAlert(options: {
+    title: string;
+    body: string;
+    delayMs: number;
+    upgradeAction: string;
+  }): Promise<void>;
+  consumePendingUpgradeAction(): Promise<{ action?: string }>;
+};
+
 const MOONLIGHT_PACKAGE = 'com.limelight';
 const SUGGESTED_INTENT = 'I want to play Nitro Racer with smooth 4K gameplay.';
+const DemoFlow = registerPlugin<DemoFlowPlugin>('DemoFlow');
 
 function formatTimestamp() {
   return new Date().toLocaleTimeString([], {
@@ -513,6 +525,52 @@ export default function App() {
     setIsPlaying(true);
   };
 
+  const resumeGamingUpgradeFlow = useCallback(() => {
+    if (window.location.pathname !== '/') {
+      window.history.pushState({}, '', '/');
+    }
+
+    if (degradationTimer.current !== null) {
+      window.clearTimeout(degradationTimer.current);
+      degradationTimer.current = null;
+    }
+    if (upgradeTimer.current !== null) {
+      window.clearTimeout(upgradeTimer.current);
+      upgradeTimer.current = null;
+    }
+    if (successTimer.current !== null) {
+      window.clearTimeout(successTimer.current);
+      successTimer.current = null;
+    }
+
+    setRoute('app');
+    setExperience('gaming');
+    lastShowcaseExperience.current = 'gaming';
+    setShowExperienceMenu(false);
+    setShowMobileAdminSheet(false);
+    setNetworkTier('Degraded');
+    setShowModal(true);
+    setModalExpanded(true);
+    setIsUpgrading(false);
+    setUpgradeSuccess(false);
+    setIsPlaying(true);
+  }, []);
+
+  const consumePendingUpgradeAction = useCallback(async () => {
+    if (Capacitor.getPlatform() !== 'android') {
+      return;
+    }
+
+    try {
+      const { action } = await DemoFlow.consumePendingUpgradeAction();
+      if (action === 'gaming-upgrade') {
+        resumeGamingUpgradeFlow();
+      }
+    } catch (error) {
+      console.error('Pending upgrade action check failed', error);
+    }
+  }, [resumeGamingUpgradeFlow]);
+
   const handleExperienceChange = (nextExperience: Experience) => {
     if (nextExperience === experience) {
       setShowExperienceMenu(false);
@@ -602,7 +660,41 @@ export default function App() {
         return;
       }
 
+      let notificationsGranted = true;
+      try {
+        const permission = await DemoFlow.ensureNotificationPermission();
+        notificationsGranted = permission.granted;
+      } catch (error) {
+        console.error('Notification permission request failed', error);
+        notificationsGranted = false;
+      }
+
       await AppLauncher.openUrl({ url: MOONLIGHT_PACKAGE });
+
+      if (notificationsGranted) {
+        try {
+          await DemoFlow.scheduleLatencyAlert({
+            title: 'Input Latency High',
+            body: 'Moonlight is currently running on a degraded path. Tap Fix to return and apply 6G Edge Boost.',
+            delayMs: 6000,
+            upgradeAction: 'gaming-upgrade',
+          });
+        } catch (error) {
+          console.error('Latency alert scheduling failed', error);
+          appendNetworkIntentMessage(
+            'Alert scheduling failed',
+            'Moonlight opened, but the background latency alert could not be scheduled on this device.',
+            'gaming'
+          );
+        }
+      } else {
+        appendNetworkIntentMessage(
+          'Notifications blocked',
+          'Moonlight opened, but Android notifications are disabled so the background latency alert will not appear.',
+          'gaming'
+        );
+      }
+
       updateIntentMessage(messageId, (message) => ({
         ...message,
         actionCard: message.actionCard
@@ -736,6 +828,27 @@ export default function App() {
     window.addEventListener('popstate', handlePopState);
     return () => window.removeEventListener('popstate', handlePopState);
   }, []);
+
+  useEffect(() => {
+    const handleVisibilityChange = () => {
+      if (!document.hidden) {
+        void consumePendingUpgradeAction();
+      }
+    };
+
+    const handleFocus = () => {
+      void consumePendingUpgradeAction();
+    };
+
+    void consumePendingUpgradeAction();
+    document.addEventListener('visibilitychange', handleVisibilityChange);
+    window.addEventListener('focus', handleFocus);
+
+    return () => {
+      document.removeEventListener('visibilitychange', handleVisibilityChange);
+      window.removeEventListener('focus', handleFocus);
+    };
+  }, [consumePendingUpgradeAction]);
 
   useEffect(() => {
     if (!isStreaming || !videoRef.current) {

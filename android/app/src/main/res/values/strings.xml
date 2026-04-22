@@ -4,4 +4,12 @@
     <string name="title_activity_main">IntentLink Demo</string>
     <string name="package_name">com.acore2026.intentlink</string>
     <string name="custom_url_scheme">com.acore2026.intentlink</string>
+    <string name="latency_notification_channel_name">Latency Alerts</string>
+    <string name="latency_notification_channel_description">Heads-up alerts for degraded Moonlight sessions during the demo.</string>
+    <string name="latency_notification_fix">Fix</string>
+    <string name="upgrade_confirmation_badge">NETAGENT</string>
+    <string name="upgrade_confirmation_title">Input Latency High</string>
+    <string name="upgrade_confirmation_message">Moonlight is running on a degraded path. Open NETAGENT and apply 6G Edge Boost?</string>
+    <string name="upgrade_confirmation_confirm">Activate Fix</string>
+    <string name="upgrade_confirmation_later">Later</string>
 </resources>
