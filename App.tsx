@@ -20,10 +20,14 @@ import {
   Wifi,
   Zap,
 } from 'lucide-react';
+import { buildIntentBackendUrl, getStoredIntentBackendHost, persistIntentBackendHost } from './intent-clarification-config';
+import { IntentConversationRepository } from './intent-conversation-repository';
+import type { ConversationSnapshot, SocketUiState } from './intent-clarification-types';
+import { findInstalledMoonlightPackage } from './moonlight-launcher';
 
 type NetworkTier = '5G' | 'Degraded' | '6G';
 type Experience = 'streaming' | 'gaming' | 'intent';
-type AppRoute = 'app' | 'admin';
+type IntentSelectionCategory = 'experience' | 'compute';
 type IntentCategory = 'buffering' | 'latency' | 'gaming' | 'slice' | 'unknown';
 type IntentRole = 'user' | 'network';
 type IntentStatus = 'sent' | 'processing' | 'complete';
@@ -73,6 +77,8 @@ type IntentMessage = {
   status: IntentStatus;
   category?: IntentCategory;
   actionCard?: IntentActionCard;
+  finalData?: Record<string, unknown> | null;
+  isError?: boolean;
 };
 
 type StubIntentResult = {
@@ -93,7 +99,6 @@ type DemoFlowPlugin = {
   consumePendingUpgradeAction(): Promise<{ action?: string }>;
 };
 
-const MOONLIGHT_PACKAGE = 'com.limelight';
 const SUGGESTED_INTENT = 'I want to play Nitro Racer with smooth 4K gameplay.';
 const DemoFlow = registerPlugin<DemoFlowPlugin>('DemoFlow');
 
@@ -104,8 +109,70 @@ function formatTimestamp() {
   });
 }
 
-function getRouteFromPath(pathname: string): AppRoute {
-  return pathname === '/admin' ? 'admin' : 'app';
+function normalizeIntentCategory(category?: string): IntentCategory {
+  return category === 'buffering' ||
+    category === 'latency' ||
+    category === 'gaming' ||
+    category === 'slice' ||
+    category === 'unknown'
+    ? category
+    : 'unknown';
+}
+
+function getIntentSocketStateLabel(state: SocketUiState) {
+  if (state === 'connecting') {
+    return 'Connecting';
+  }
+
+  if (state === 'connected') {
+    return 'Connected';
+  }
+
+  if (state === 'sending') {
+    return 'Sending';
+  }
+
+  if (state === 'clarify') {
+    return 'Clarify';
+  }
+
+  if (state === 'done') {
+    return 'Done';
+  }
+
+  if (state === 'error') {
+    return 'Error';
+  }
+
+  return 'Disconnected';
+}
+
+function getIntentSocketStateAccent(state: SocketUiState) {
+  if (state === 'connected' || state === 'done') {
+    return {
+      bg: 'bg-emerald-50',
+      text: 'text-emerald-700',
+    };
+  }
+
+  if (state === 'sending' || state === 'clarify' || state === 'connecting') {
+    return {
+      bg: 'bg-sky-50',
+      text: 'text-sky-700',
+    };
+  }
+
+  if (state === 'error') {
+    return {
+      bg: 'bg-red-50',
+      text: 'text-red-700',
+    };
+  }
+
+  return {
+    bg: 'bg-slate-100',
+    text: 'text-slate-500',
+  };
 }
 
 function isGameLaunchIntent(normalized: string) {
@@ -113,6 +180,8 @@ function isGameLaunchIntent(normalized: string) {
     normalized.includes('game') ||
     normalized.includes('gaming') ||
     normalized.includes('nitro racer') ||
+    normalized.includes('王者') ||
+    normalized.includes('打王者') ||
     normalized.includes('moonlight') ||
     (normalized.includes('play') &&
       (normalized.includes('smooth') ||
@@ -452,18 +521,36 @@ function CloudGame({ networkTier }: { networkTier: NetworkTier }) {
 }
 
 export default function App() {
-  const [route, setRoute] = useState<AppRoute>(() => getRouteFromPath(window.location.pathname));
   const [experience, setExperience] = useState<Experience>('streaming');
   const [showExperienceMenu, setShowExperienceMenu] = useState(false);
-  const [showMobileAdminSheet, setShowMobileAdminSheet] = useState(false);
+  const [showControlsSheet, setShowControlsSheet] = useState(false);
   const [networkTier, setNetworkTier] = useState<NetworkTier>('5G');
   const [isPlaying, setIsPlaying] = useState(true);
   const [showModal, setShowModal] = useState(false);
   const [modalExpanded, setModalExpanded] = useState(false);
   const [isUpgrading, setIsUpgrading] = useState(false);
   const [upgradeSuccess, setUpgradeSuccess] = useState(false);
+  const [systemAgentHost, setSystemAgentHost] = useState(() =>
+    typeof window === 'undefined' ? '' : getStoredIntentBackendHost(window.localStorage)
+  );
+  const [systemAgentDraft, setSystemAgentDraft] = useState(() =>
+    typeof window === 'undefined' ? '' : getStoredIntentBackendHost(window.localStorage)
+  );
   const [intentDraft, setIntentDraft] = useState('');
+  const [intentCategory, setIntentCategory] = useState<IntentSelectionCategory | null>('experience');
   const [isIntentSending, setIsIntentSending] = useState(false);
+  const intentConversationRepositoryRef = useRef<IntentConversationRepository | null>(null);
+  if (!intentConversationRepositoryRef.current) {
+    intentConversationRepositoryRef.current = new IntentConversationRepository({
+      formatTimestamp,
+      createId: () => `conversation-${Math.random().toString(36).slice(2, 10)}`,
+    });
+  }
+  const intentConversationRepository = intentConversationRepositoryRef.current;
+  const [backendConversation, setBackendConversation] = useState<ConversationSnapshot>(() =>
+    intentConversationRepository.getSnapshot()
+  );
+  const [handoffMessages, setHandoffMessages] = useState<IntentMessage[]>([]);
   const [intentMessages, setIntentMessages] = useState<IntentMessage[]>(() => [
     {
       id: 'network-0',
@@ -488,6 +575,7 @@ export default function App() {
   const isStreaming = experience === 'streaming';
   const isGaming = experience === 'gaming';
   const isIntent = experience === 'intent';
+  const hasSystemAgentEndpoint = Boolean(systemAgentHost);
 
   const clearNetworkTimers = () => {
     if (degradationTimer.current !== null) {
@@ -506,13 +594,19 @@ export default function App() {
 
   const nextIntentMessageId = () => `intent-${intentMessageId.current++}`;
 
-  const navigate = (path: '/' | '/admin') => {
-    if (window.location.pathname !== path) {
-      window.history.pushState({}, '', path);
-    }
-    setRoute(getRouteFromPath(path));
-    setShowExperienceMenu(false);
-    setShowMobileAdminSheet(false);
+  const saveSystemAgentEndpoint = () => {
+    const nextHost = systemAgentDraft.trim();
+    setSystemAgentHost(nextHost);
+    setSystemAgentDraft(nextHost);
+    persistIntentBackendHost(window.localStorage, nextHost);
+  };
+
+  const clearSystemAgentEndpoint = () => {
+    setSystemAgentHost('');
+    setSystemAgentDraft('');
+    persistIntentBackendHost(window.localStorage, '');
+    intentConversationRepository.resetSession();
+    setHandoffMessages([]);
   };
 
   const resetNetwork = () => {
@@ -523,13 +617,10 @@ export default function App() {
     setIsUpgrading(false);
     setUpgradeSuccess(false);
     setIsPlaying(true);
+    setIntentCategory('experience');
   };
 
   const resumeGamingUpgradeFlow = useCallback(() => {
-    if (window.location.pathname !== '/') {
-      window.history.pushState({}, '', '/');
-    }
-
     if (degradationTimer.current !== null) {
       window.clearTimeout(degradationTimer.current);
       degradationTimer.current = null;
@@ -543,11 +634,10 @@ export default function App() {
       successTimer.current = null;
     }
 
-    setRoute('app');
     setExperience('gaming');
     lastShowcaseExperience.current = 'gaming';
     setShowExperienceMenu(false);
-    setShowMobileAdminSheet(false);
+    setShowControlsSheet(false);
     setNetworkTier('Degraded');
     setShowModal(true);
     setModalExpanded(true);
@@ -583,7 +673,8 @@ export default function App() {
 
     setExperience(nextExperience);
     setShowExperienceMenu(false);
-    setShowMobileAdminSheet(false);
+    setShowControlsSheet(false);
+    setIntentCategory('experience');
     resetNetwork();
   };
 
@@ -591,21 +682,28 @@ export default function App() {
     setIntentMessages((messages) =>
       messages.map((message) => (message.id === messageId ? updater(message) : message))
     );
+    setHandoffMessages((messages) =>
+      messages.map((message) => (message.id === messageId ? updater(message) : message))
+    );
   };
 
   const appendNetworkIntentMessage = (title: string, text: string, category: IntentCategory = 'unknown') => {
-    setIntentMessages((messages) => [
-      ...messages,
-      {
-        id: nextIntentMessageId(),
-        role: 'network',
-        title,
-        text,
-        timestamp: formatTimestamp(),
-        status: 'complete',
-        category,
-      },
-    ]);
+    const message: IntentMessage = {
+      id: nextIntentMessageId(),
+      role: 'network',
+      title,
+      text,
+      timestamp: formatTimestamp(),
+      status: 'complete',
+      category,
+    };
+
+    if (hasSystemAgentEndpoint) {
+      setHandoffMessages((messages) => [...messages, message]);
+      return;
+    }
+
+    setIntentMessages((messages) => [...messages, message]);
   };
 
   const handleMoonlightLaunch = async (messageId: string) => {
@@ -640,8 +738,9 @@ export default function App() {
     }
 
     try {
-      const canOpen = await AppLauncher.canOpenUrl({ url: MOONLIGHT_PACKAGE });
-      if (!canOpen.value) {
+      const moonlightPackage = await findInstalledMoonlightPackage(AppLauncher);
+
+      if (!moonlightPackage) {
         updateIntentMessage(messageId, (message) => ({
           ...message,
           actionCard: message.actionCard
@@ -669,7 +768,7 @@ export default function App() {
         notificationsGranted = false;
       }
 
-      await AppLauncher.openUrl({ url: MOONLIGHT_PACKAGE });
+      await AppLauncher.openUrl({ url: moonlightPackage });
 
       if (notificationsGranted) {
         try {
@@ -760,9 +859,60 @@ export default function App() {
     }, 2000);
   };
 
-  const submitIntent = (input: string) => {
+  const submitIntent = async (input: string) => {
     const trimmedInput = input.trim();
-    if (!trimmedInput || isIntentSending) {
+    if (!trimmedInput || (!hasSystemAgentEndpoint && (isIntentSending || !intentCategory))) {
+      return;
+    }
+
+    const selectedCategory = intentCategory ?? 'experience';
+    const isComputeGameIntent = selectedCategory === 'compute' && isGameLaunchIntent(trimmedInput.toLowerCase());
+
+    if (isComputeGameIntent) {
+      if (hasSystemAgentEndpoint && backendConversation.awaitingReply) {
+        return;
+      }
+
+      const stubResult = getStubIntentResult(trimmedInput);
+      const handoffId = nextIntentMessageId();
+      const nextMessages: IntentMessage[] = [
+        {
+          id: nextIntentMessageId(),
+          role: 'user',
+          text: trimmedInput,
+          timestamp: formatTimestamp(),
+          status: 'sent',
+          category: 'gaming',
+        },
+        {
+          id: handoffId,
+          role: 'network',
+          title: stubResult.title,
+          text: stubResult.text,
+          timestamp: formatTimestamp(),
+          status: 'complete',
+          category: stubResult.category,
+          actionCard: stubResult.actionCard ? { ...stubResult.actionCard, state: 'ready' } : undefined,
+        },
+      ];
+
+      if (hasSystemAgentEndpoint) {
+        setHandoffMessages((messages) => [...messages, ...nextMessages]);
+      } else {
+        setIntentMessages((messages) => [...messages, ...nextMessages]);
+      }
+
+      setIntentDraft('');
+      setIntentCategory('experience');
+      return;
+    }
+
+    if (hasSystemAgentEndpoint) {
+      const sent = intentConversationRepository.submitTurn(trimmedInput);
+      if (sent) {
+        setIntentDraft('');
+        setIntentCategory('experience');
+      }
       return;
     }
 
@@ -776,22 +926,29 @@ export default function App() {
         text: trimmedInput,
         timestamp: formatTimestamp(),
         status: 'sent',
+        category: selectedCategory as any,
       },
       {
         id: pendingId,
         role: 'network',
         title: 'NETAGENT',
-        text: 'Evaluating the request and checking nearby network-computing resources.',
+        text: hasSystemAgentEndpoint
+          ? 'Forwarding the request to the configured System Agent in the core network.'
+          : 'Evaluating the request and checking nearby network-computing resources.',
         timestamp: formatTimestamp(),
         status: 'processing',
       },
     ]);
 
     setIntentDraft('');
+    setIntentCategory('experience');
     setIsIntentSending(true);
 
     intentReplyTimer.current = window.setTimeout(() => {
       const stubResult = getStubIntentResult(trimmedInput);
+      const categoryAwareText = selectedCategory === 'experience'
+        ? `Acknowledged: Network experience intent for ${stubResult.category}. ${stubResult.text}`
+        : `Acknowledged: Compute resource intent for ${stubResult.category}. ${stubResult.text}`;
 
       setIntentMessages((messages) =>
         messages.map((message) =>
@@ -799,7 +956,7 @@ export default function App() {
             ? {
                 ...message,
                 title: stubResult.title,
-                text: stubResult.text,
+                text: categoryAwareText,
                 timestamp: formatTimestamp(),
                 status: 'complete',
                 category: stubResult.category,
@@ -817,17 +974,6 @@ export default function App() {
       intentReplyTimer.current = null;
     }, 700);
   };
-
-  useEffect(() => {
-    const handlePopState = () => {
-      setRoute(getRouteFromPath(window.location.pathname));
-      setShowExperienceMenu(false);
-      setShowMobileAdminSheet(false);
-    };
-
-    window.addEventListener('popstate', handlePopState);
-    return () => window.removeEventListener('popstate', handlePopState);
-  }, []);
 
   useEffect(() => {
     const handleVisibilityChange = () => {
@@ -849,6 +995,30 @@ export default function App() {
       window.removeEventListener('focus', handleFocus);
     };
   }, [consumePendingUpgradeAction]);
+
+  useEffect(() => {
+    const unsubscribe = intentConversationRepository.subscribe((snapshot) => {
+      setBackendConversation(snapshot);
+    });
+
+    return () => {
+      unsubscribe();
+      intentConversationRepository.dispose();
+    };
+  }, [intentConversationRepository]);
+
+  useEffect(() => {
+    intentConversationRepository.setBackendHost(systemAgentHost);
+  }, [intentConversationRepository, systemAgentHost]);
+
+  useEffect(() => {
+    if (isIntent && hasSystemAgentEndpoint) {
+      intentConversationRepository.activate();
+      return;
+    }
+
+    intentConversationRepository.deactivate();
+  }, [hasSystemAgentEndpoint, intentConversationRepository, isIntent]);
 
   useEffect(() => {
     if (!isStreaming || !videoRef.current) {
@@ -900,6 +1070,25 @@ export default function App() {
     : isGaming
       ? 'Inject latency and packet loss. The session feels sluggish, then the 6G Edge offer appears after 4 seconds.'
       : 'Simulate tower congestion. Video quality collapses, buffering starts, then the upgrade offer appears after 3 seconds.';
+  const intentSocketState: SocketUiState = hasSystemAgentEndpoint ? backendConversation.uiState : isIntentSending ? 'sending' : 'disconnected';
+  const displayedIntentMessages = hasSystemAgentEndpoint
+    ? [
+        ...backendConversation.messages.map<IntentMessage>((message) => ({
+          id: message.id,
+          role: message.role === 'user' ? 'user' : 'network',
+          title: message.title,
+          text: message.text,
+          timestamp: message.timestamp,
+          status: 'complete',
+          finalData: message.finalData,
+          isError: message.isError,
+        })),
+        ...handoffMessages,
+      ]
+    : intentMessages;
+  const backendConnectionLabel = getIntentSocketStateLabel(intentSocketState);
+  const backendConnectionAccent = getIntentSocketStateAccent(intentSocketState);
+  const resolvedBackendUrl = buildIntentBackendUrl(systemAgentHost);
 
   const renderExperienceMenu = () => (
     <div className="relative">
@@ -1152,11 +1341,24 @@ export default function App() {
         <div className={`max-w-[84%] ${isUser ? 'items-end' : 'items-start'} flex flex-col`}>
           <div
             className={`rounded-[26px] px-5 py-4 shadow-sm ${
-              isUser ? 'rounded-br-md bg-[#3568e9] text-white' : 'rounded-bl-md bg-slate-100 text-slate-900'
+              isUser
+                ? 'rounded-br-md bg-[#3568e9] text-white'
+                : message.isError
+                  ? 'rounded-bl-md border border-red-100 bg-red-50 text-red-900'
+                  : 'rounded-bl-md bg-slate-100 text-slate-900'
             }`}
           >
             {!isUser && message.title && <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{message.title}</div>}
             <p className="text-[17px] leading-8">{message.text}</p>
+
+            {message.finalData && (
+              <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4 text-left text-slate-900">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Final Data</div>
+                <pre className="mt-2 overflow-x-auto whitespace-pre-wrap break-words text-sm leading-6 text-slate-700">
+                  {JSON.stringify(message.finalData, null, 2)}
+                </pre>
+              </div>
+            )}
 
             {message.actionCard && (
               <div
@@ -1206,6 +1408,21 @@ export default function App() {
             <Globe2 size={19} />
           </div>
           <span className="mt-1 text-xs font-semibold tracking-[0.22em] text-slate-400">NETAGENT</span>
+          <div className="mt-2 flex flex-wrap items-center justify-center gap-1.5">
+            <span
+              data-testid="intent-backend-status"
+              className={`rounded-full px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] ${
+                hasSystemAgentEndpoint ? `${backendConnectionAccent.bg} ${backendConnectionAccent.text}` : 'bg-slate-100 text-slate-500'
+              }`}
+            >
+              {hasSystemAgentEndpoint ? backendConnectionLabel : 'Stub Mode'}
+            </span>
+            {hasSystemAgentEndpoint && backendConversation.sessionId > 0 && (
+              <span className="rounded-full bg-slate-100 px-2.5 py-1 text-[10px] font-semibold uppercase tracking-[0.18em] text-slate-500">
+                Session {backendConversation.sessionId}
+              </span>
+            )}
+          </div>
         </div>
         {renderExperienceMenu()}
       </div>
@@ -1219,10 +1436,63 @@ export default function App() {
           }
         }}
       >
-        {intentMessages.map(renderIntentMessage)}
+        <div className="flex items-center justify-between gap-3 rounded-2xl border border-slate-200 bg-slate-50 px-4 py-3">
+          <div className="min-w-0">
+            <div className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Backend</div>
+            <div className="truncate text-sm font-medium text-slate-700">
+              {hasSystemAgentEndpoint ? resolvedBackendUrl : 'Local stub flow'}
+            </div>
+          </div>
+          <button
+            type="button"
+            data-testid="intent-new-session"
+            onClick={() => {
+              if (hasSystemAgentEndpoint) {
+                intentConversationRepository.resetSession();
+                setHandoffMessages([]);
+              } else {
+                setIntentMessages([
+                  {
+                    id: 'network-0',
+                    role: 'network',
+                    title: 'NETAGENT',
+                    text: "Hello! I'm your Network-Aware Agent. How can I help you today?",
+                    timestamp: formatTimestamp(),
+                    status: 'complete',
+                    category: 'unknown',
+                  },
+                ]);
+              }
+            }}
+            className="shrink-0 rounded-full border border-slate-200 bg-white px-3 py-1.5 text-xs font-semibold text-slate-600 transition-colors hover:bg-slate-100"
+          >
+            New Session
+          </button>
+        </div>
+
+        {displayedIntentMessages.map(renderIntentMessage)}
       </div>
 
       <div className="sticky bottom-0 z-30 border-t border-slate-200 bg-white px-4 pb-4 pt-3">
+        <div className="mb-2.5 flex items-center justify-between">
+          <span className="text-[11px] font-bold uppercase tracking-widest text-slate-400">Intent Category</span>
+          <div className="flex gap-1.5">
+            {(['experience', 'compute'] as const).map((cat) => (
+              <button
+                key={cat}
+                type="button"
+                onClick={() => setIntentCategory(cat)}
+                className={`rounded-full px-3 py-1 text-[10px] font-bold uppercase tracking-wider transition-all ${
+                  intentCategory === cat
+                    ? 'bg-sky-500 text-white shadow-sm'
+                    : 'bg-slate-100 text-slate-500 hover:bg-slate-200'
+                }`}
+              >
+                {cat}
+              </button>
+            ))}
+          </div>
+        </div>
         <div className="flex items-center gap-1.5">
           <button
             type="button"
@@ -1257,11 +1527,19 @@ export default function App() {
               type="button"
               data-testid="intent-send"
               aria-label="Send intent"
-              disabled={isIntentSending || !intentDraft.trim()}
+              disabled={
+                !intentDraft.trim() ||
+                (!hasSystemAgentEndpoint && (isIntentSending || !intentCategory)) ||
+                (hasSystemAgentEndpoint && backendConversation.awaitingReply)
+              }
               onClick={() => submitIntent(intentDraft)}
               className="absolute right-1 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-full bg-sky-400 text-white transition-colors hover:bg-sky-500 disabled:cursor-not-allowed disabled:bg-slate-200 disabled:text-slate-400"
             >
-              {isIntentSending ? <Loader2 size={16} className="animate-spin" /> : <SendHorizontal size={16} />}
+              {(hasSystemAgentEndpoint ? backendConversation.awaitingReply : isIntentSending) ? (
+                <Loader2 size={16} className="animate-spin" />
+              ) : (
+                <SendHorizontal size={16} />
+              )}
             </button>
           </div>
           <button
@@ -1277,14 +1555,14 @@ export default function App() {
     </div>
   );
 
-  const renderMobileAdminSheet = () => (
+  const renderControlsSheet = () => (
     <>
       <button
         type="button"
-        data-testid="mobile-admin-trigger"
-        aria-label="Open mobile presenter controls"
-        onClick={() => setShowMobileAdminSheet(true)}
-        className={`fixed right-4 z-40 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(15,23,42,0.22)] transition-colors hover:bg-slate-800 sm:hidden ${
+        data-testid="controls-trigger"
+        aria-label="Open controls"
+        onClick={() => setShowControlsSheet(true)}
+        className={`fixed right-4 z-40 flex items-center gap-2 rounded-full bg-slate-900 px-4 py-3 text-sm font-semibold text-white shadow-[0_16px_32px_rgba(15,23,42,0.22)] transition-colors hover:bg-slate-800 ${
           isIntent ? 'bottom-24' : 'bottom-6'
         }`}
       >
@@ -1292,25 +1570,25 @@ export default function App() {
         <span>Controls</span>
       </button>
 
-      {showMobileAdminSheet && (
-        <div className="fixed inset-0 z-50 flex items-end sm:hidden">
+      {showControlsSheet && (
+        <div className="fixed inset-0 z-50 flex items-end justify-end sm:items-center sm:p-6">
           <button
             type="button"
-            aria-label="Close mobile presenter controls"
-            onClick={() => setShowMobileAdminSheet(false)}
+            aria-label="Close controls"
+            onClick={() => setShowControlsSheet(false)}
             className="absolute inset-0 bg-slate-900/45 backdrop-blur-sm"
           />
-          <div className="relative z-10 w-full rounded-t-[32px] bg-white px-5 pb-6 pt-4 shadow-2xl">
+          <div className="relative z-10 w-full rounded-t-[32px] bg-white px-5 pb-6 pt-4 shadow-2xl sm:max-w-md sm:rounded-[32px]">
             <div className="mx-auto mb-4 h-1.5 w-14 rounded-full bg-slate-200"></div>
             <div className="mb-5 flex items-start justify-between gap-4">
               <div>
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Mobile Controls</div>
-                <h2 className="mt-1 text-xl font-bold text-slate-900">Quick Presenter Panel</h2>
-                <p className="mt-1 text-sm text-slate-500">Use these controls directly on your phone without opening the desktop admin page.</p>
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-600">Live Controls</div>
+                <h2 className="mt-1 text-xl font-bold text-slate-900">Control Panel</h2>
+                <p className="mt-1 text-sm text-slate-500">Use these controls directly in the app without a separate control page.</p>
               </div>
               <button
                 type="button"
-                onClick={() => setShowMobileAdminSheet(false)}
+                onClick={() => setShowControlsSheet(false)}
                 className="rounded-full border border-slate-200 px-3 py-1.5 text-sm font-medium text-slate-600"
               >
                 Close
@@ -1323,7 +1601,7 @@ export default function App() {
                 <div className="mt-3 grid grid-cols-3 gap-2">
                   <button
                     type="button"
-                    data-testid="mobile-admin-streaming"
+                    data-testid="controls-streaming"
                     onClick={() => handleExperienceChange('streaming')}
                     className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
                       isStreaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
@@ -1333,7 +1611,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    data-testid="mobile-admin-gaming"
+                    data-testid="controls-gaming"
                     onClick={() => handleExperienceChange('gaming')}
                     className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
                       isGaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
@@ -1343,7 +1621,7 @@ export default function App() {
                   </button>
                   <button
                     type="button"
-                    data-testid="mobile-admin-intent"
+                    data-testid="controls-intent"
                     onClick={() => handleExperienceChange('intent')}
                     className={`rounded-xl py-2.5 text-sm font-medium transition-colors ${
                       isIntent ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
@@ -1354,15 +1632,56 @@ export default function App() {
                 </div>
               </div>
 
+              <div className="rounded-2xl border border-emerald-100 bg-emerald-50 p-4">
+                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">System Agent Backend</div>
+                <p className="mt-2 text-sm text-emerald-800">
+                  Configure the backend host. Direct Intent keeps one WebSocket connection open to <code>/api/ws</code> on port <code>7201</code>.
+                </p>
+                <label className="mt-3 block text-xs font-semibold uppercase tracking-[0.18em] text-emerald-700">Backend Host</label>
+                <input
+                  data-testid="system-agent-endpoint-input"
+                  type="text"
+                  value={systemAgentDraft}
+                  onChange={(event) => setSystemAgentDraft(event.target.value)}
+                  placeholder="192.168.1.20"
+                  className="mt-3 w-full rounded-xl border border-emerald-200 bg-white px-3 py-2 text-sm text-slate-900 outline-none transition-colors placeholder:text-slate-400 focus:border-emerald-400 focus:ring-2 focus:ring-emerald-100"
+                />
+                <div className="mt-3 flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    data-testid="system-agent-save"
+                    onClick={saveSystemAgentEndpoint}
+                    className="rounded-lg bg-emerald-600 px-4 py-2 text-sm font-semibold text-white transition-colors hover:bg-emerald-700"
+                  >
+                    Save
+                  </button>
+                  <button
+                    type="button"
+                    data-testid="system-agent-clear"
+                    onClick={clearSystemAgentEndpoint}
+                    className="rounded-lg border border-emerald-200 bg-white px-4 py-2 text-sm font-semibold text-emerald-800 transition-colors hover:bg-emerald-100"
+                  >
+                    Clear
+                  </button>
+                </div>
+                <div className="mt-3 rounded-lg border border-emerald-200 bg-white px-3 py-2 text-sm text-emerald-900">
+                  <span className="font-semibold">Status:</span>{' '}
+                  <span data-testid="system-agent-status">{hasSystemAgentEndpoint ? backendConnectionLabel : 'Stub mode'}</span>
+                </div>
+                {hasSystemAgentEndpoint && (
+                  <p className="mt-2 break-all text-xs text-emerald-700">{resolvedBackendUrl}</p>
+                )}
+              </div>
+
               <div className="rounded-2xl border border-blue-100 bg-blue-50 p-4">
                 <div className="text-xs font-semibold uppercase tracking-[0.18em] text-blue-700">Reset</div>
                 <p className="mt-2 text-sm text-blue-700">{initialStateCopy}</p>
                 <button
                   type="button"
-                  data-testid="mobile-admin-reset"
+                  data-testid="controls-reset"
                   onClick={() => {
                     resetNetwork();
-                    setShowMobileAdminSheet(false);
+                    setShowControlsSheet(false);
                   }}
                   disabled={networkTier === '5G' || isIntent}
                   className="mt-3 w-full rounded-xl bg-blue-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-blue-700 disabled:bg-blue-200"
@@ -1376,10 +1695,10 @@ export default function App() {
                 <p className="mt-2 text-sm text-red-700">{congestionCopy}</p>
                 <button
                   type="button"
-                  data-testid="mobile-admin-degrade"
+                  data-testid="controls-degrade"
                   onClick={() => {
                     triggerDegradation();
-                    setShowMobileAdminSheet(false);
+                    setShowControlsSheet(false);
                   }}
                   disabled={networkTier !== '5G' || isIntent}
                   className="mt-3 w-full rounded-xl bg-red-600 py-3 text-sm font-semibold text-white transition-colors hover:bg-red-700 disabled:bg-red-200"
@@ -1387,15 +1706,6 @@ export default function App() {
                   Trigger Network Degradation
                 </button>
               </div>
-
-              <button
-                type="button"
-                data-testid="mobile-admin-open-page"
-                onClick={() => navigate('/admin')}
-                className="w-full rounded-2xl border border-slate-200 bg-white py-3 text-sm font-semibold text-slate-700 transition-colors hover:bg-slate-50"
-              >
-                Open Full /admin Page
-              </button>
             </div>
           </div>
         </div>
@@ -1535,205 +1845,10 @@ export default function App() {
             )}
           </div>
         </div>
-        {renderMobileAdminSheet()}
+        {renderControlsSheet()}
       </div>
     </div>
   );
 
-  const renderAdminPage = () => (
-    <div className="min-h-screen bg-slate-100 px-4 py-8 font-sans text-slate-900 sm:px-6">
-      <div className="mx-auto max-w-5xl">
-        <div className="mb-8 flex flex-col gap-4 sm:flex-row sm:items-center sm:justify-between">
-          <div>
-            <p className="text-sm font-semibold uppercase tracking-[0.22em] text-blue-600">Internal Route</p>
-            <h1 className="mt-1 text-3xl font-bold text-slate-900">Presenter Controls</h1>
-            <p className="mt-2 max-w-2xl text-sm text-slate-500">
-              This admin route hosts the old presenter-side controls. The end-user app at <code>/</code> no longer shows them.
-            </p>
-          </div>
-          <button
-            type="button"
-            data-testid="admin-open-app"
-            onClick={() => navigate('/')}
-            className="inline-flex items-center justify-center rounded-full border border-slate-200 bg-white px-5 py-2.5 text-sm font-semibold text-slate-700 shadow-sm transition-colors hover:bg-slate-50"
-          >
-            Open App
-          </button>
-        </div>
-
-        <div className="grid gap-6 lg:grid-cols-[minmax(0,420px)_minmax(0,1fr)]">
-          <div className="rounded-3xl border border-gray-100 bg-white p-8 shadow-xl">
-            <h2 className="mb-6 flex items-center text-2xl font-bold text-gray-800">
-              <Settings className="mr-2 text-blue-500" /> Presenter Controls
-            </h2>
-
-            {isIntent && (
-              <div className="mb-6 rounded-xl border border-slate-200 bg-slate-50 p-4 text-sm text-slate-600">
-                Direct Intent now supports a stubbed Moonlight handoff. Switch back to Streaming or Gaming to use the live network simulator controls.
-              </div>
-            )}
-
-            <div className="space-y-6">
-              <div className="rounded-xl border border-gray-100 bg-slate-50 p-4">
-                <h3 className="mb-2 font-bold text-slate-800">1. Choose Demo Experience</h3>
-                <p className="mb-3 text-sm text-slate-600">These admin controls apply to the Streaming and Gaming demos only.</p>
-                <div className="grid grid-cols-3 gap-2">
-                  <button
-                    type="button"
-                    onClick={() => handleExperienceChange('streaming')}
-                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isStreaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-                    }`}
-                  >
-                    Streaming
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleExperienceChange('gaming')}
-                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isGaming ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-                    }`}
-                  >
-                    Gaming
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => handleExperienceChange('intent')}
-                    className={`rounded-lg py-2 text-sm font-medium transition-colors ${
-                      isIntent ? 'bg-slate-900 text-white' : 'border border-slate-200 bg-white text-slate-700'
-                    }`}
-                  >
-                    Intent
-                  </button>
-                </div>
-              </div>
-
-              <div className="rounded-xl border border-blue-100 bg-blue-50 p-4">
-                <h3 className="mb-2 font-bold text-blue-800">2. Initial State</h3>
-                <p className="mb-3 text-sm text-blue-600">{initialStateCopy}</p>
-                <button
-                  onClick={resetNetwork}
-                  disabled={networkTier === '5G' || isIntent}
-                  className="w-full rounded-lg bg-blue-600 py-2 text-sm font-medium text-white transition-colors hover:bg-blue-700 disabled:opacity-50"
-                >
-                  Reset to Standard 5G
-                </button>
-              </div>
-
-              <div className="rounded-xl border border-red-100 bg-red-50 p-4">
-                <h3 className="mb-2 font-bold text-red-800">3. Simulate Congestion</h3>
-                <p className="mb-3 text-sm text-red-600">{congestionCopy}</p>
-                <button
-                  onClick={triggerDegradation}
-                  disabled={networkTier !== '5G' || isIntent}
-                  className="w-full rounded-lg bg-red-600 py-2 text-sm font-medium text-white transition-colors hover:bg-red-700 disabled:opacity-50"
-                >
-                  Trigger Network Degradation
-                </button>
-              </div>
-
-              <div
-                className={`rounded-xl border p-4 ${
-                  isIntent
-                    ? 'border-slate-200 bg-slate-50'
-                    : isGaming
-                      ? 'border-cyan-100 bg-cyan-50'
-                      : 'border-purple-100 bg-purple-50'
-                }`}
-              >
-                <h3 className={`mb-2 font-bold ${isIntent ? 'text-slate-800' : isGaming ? 'text-cyan-800' : 'text-purple-800'}`}>
-                  4. Intent Execution
-                </h3>
-                <p className={`mb-3 text-sm ${isIntent ? 'text-slate-600' : isGaming ? 'text-cyan-700' : 'text-purple-600'}`}>
-                  {isIntent
-                    ? 'Game-launch requests stay stubbed until the user confirms the compute card, then the Android app can hand off to Moonlight.'
-                    : isGaming
-                      ? 'Accept the offer on the device to move the game session onto a premium 6G edge slice.'
-                      : 'Accept the offer on the device to allocate a premium 6G streaming slice.'}
-                </p>
-                <div
-                  className={`flex items-center space-x-2 rounded border bg-white p-2 text-sm font-medium ${
-                    isIntent
-                      ? 'border-slate-200 text-slate-600'
-                      : isGaming
-                        ? 'border-cyan-200 text-cyan-700'
-                        : 'border-purple-200 text-purple-700'
-                  }`}
-                >
-                  <div
-                    className={`h-3 w-3 rounded-full ${
-                      isIntent ? 'bg-slate-300' : networkTier === '6G' ? 'animate-pulse bg-green-500' : 'bg-gray-300'
-                    }`}
-                  ></div>
-                  <span>
-                    {isIntent
-                      ? 'Moonlight handoff available only in Android'
-                      : `${isGaming ? '6G Edge Status' : '6G Slice Status'}: ${networkTier === '6G' ? 'ACTIVE' : 'INACTIVE'}`}
-                  </span>
-                </div>
-              </div>
-            </div>
-
-            <div className="mt-8 border-t border-gray-100 pt-6 text-xs text-gray-400">
-              <strong>Architecture Note:</strong>{' '}
-              {isIntent
-                ? 'Direct Intent now mimics compute discovery and a Cloud Orchestrator handoff, then delegates to Moonlight through Capacitor on Android.'
-                : `In production, the app calls the AI Agent Gateway to translate user intent (${
-                    isGaming ? '"fix my game lag"' : '"fix my buffering"'
-                  }) into 3GPP QoS policies via the NEF/PCF.`}
-            </div>
-          </div>
-
-          <div className="rounded-3xl border border-slate-200 bg-white p-8 shadow-xl">
-            <div className="mb-6 flex items-center gap-3">
-              <div className="flex h-11 w-11 items-center justify-center rounded-2xl bg-slate-100 text-slate-700">
-                <Cpu size={22} />
-              </div>
-              <div>
-                <h2 className="text-xl font-bold text-slate-900">Live Session State</h2>
-                <p className="text-sm text-slate-500">This reflects the same in-memory SPA state used by the end-user route.</p>
-              </div>
-            </div>
-
-            <div className="grid gap-4 sm:grid-cols-2">
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Current Experience</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">
-                  {isStreaming ? 'Streaming' : isGaming ? 'Gaming' : 'Direct Intent'}
-                </div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Network Tier</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">{networkTier}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Intent Messages</div>
-                <div className="mt-2 text-lg font-bold text-slate-900">{intentMessages.length}</div>
-              </div>
-              <div className="rounded-2xl border border-slate-200 bg-slate-50 p-4">
-                <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">Moonlight Target</div>
-                <div className="mt-2 break-all text-lg font-bold text-slate-900">{MOONLIGHT_PACKAGE}</div>
-              </div>
-            </div>
-
-            <div className="mt-6 rounded-2xl border border-slate-200 bg-slate-50 p-4">
-              <h3 className="text-sm font-semibold uppercase tracking-[0.18em] text-slate-500">Latest Agent Transcript</h3>
-              <div className="mt-3 space-y-3">
-                {intentMessages.slice(-3).map((message) => (
-                  <div key={message.id} className="rounded-2xl border border-slate-200 bg-white p-3">
-                    <div className="text-xs font-semibold uppercase tracking-[0.18em] text-slate-400">
-                      {message.role === 'user' ? 'User' : message.title ?? 'Network'}
-                    </div>
-                    <p className="mt-1 text-sm leading-6 text-slate-700">{message.text}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    </div>
-  );
-
-  return route === 'admin' ? renderAdminPage() : renderRootPage();
+  return renderRootPage();
 }

@@ -2,7 +2,7 @@
 
 This file defines the canonical language for the app. Use these names in code discussions, UI reviews, demo scripts, issues, and future documentation.
 
-## Product-Level Names
+## Product-Level Names[](https://)
 
 - **App**: `IntentLink`
   Use this as the overall product/project name when referring to the Android app or the shared SPA.
@@ -12,9 +12,7 @@ This file defines the canonical language for the app. Use these names in code di
 ## Routes
 
 - **App Route**: `/`
-  The end-user experience. This is the main app surface on web and Android.
-- **Admin Route**: `/admin`
-  The presenter / operator control page.
+  The main app surface on web and Android. This now includes the end-user experience and the live control panel.
 
 ## Primary Experiences
 
@@ -34,6 +32,7 @@ Use **experience** as the umbrella term, not “tab” or “mode”, unless you
 - **Primary CTA**: `Deduct & Launch`
 
 Preferred flow wording:
+
 - User submits a **game-launch intent**
 - `NETAGENT` returns a **compute-available response**
 - User confirms the **action card**
@@ -41,11 +40,12 @@ Preferred flow wording:
 
 ## Presenter / Control Vocabulary
 
-- **Presenter Controls**: the full control page at `/admin`
-- **Mobile Quick Controls**: the floating phone-friendly bottom sheet on `/`
-- **Quick Presenter Panel**: the visible title inside that mobile sheet
+- **Control Panel**: the in-app floating controls sheet opened from the `Controls` button
+- **Controls Button**: the floating trigger that opens the Control Panel
+- **System Agent Backend**: the configurable backend endpoint inside the Control Panel used by Direct Intent
+- **Live Controls**: the small section label shown at the top of the Control Panel
 
-Use **mobile quick controls** for the phone sheet. Do not call it the admin page.
+Use **Control Panel** as the default term. Do not call it the admin page or presenter page.
 
 ## Network and Upgrade Terms
 
@@ -59,4 +59,5 @@ Use **mobile quick controls** for the phone sheet. Do not call it the admin page
 
 - Avoid `phone shell`, `container app`, or `fake phone UI` for the current `/` experience.
 - Avoid calling Direct Intent a `chatbot`; use `NETAGENT` or `Direct Intent`.
-- Avoid `backend integration` for the current logic; use `stubbed flow` or `stubbed orchestration`.
+- Avoid `admin route`, `/admin`, or `presenter page`; those no longer exist in the app.
+- Avoid `backend integration` for the local demo path; use `stubbed flow`, `stubbed orchestration`, or `System Agent backend` when the endpoint is configured.
