@@ -8,11 +8,13 @@ import android.content.Context;
 import android.content.Intent;
 import android.os.Build;
 import android.os.SystemClock;
+import android.util.Log;
 
 import androidx.core.app.NotificationCompat;
 import androidx.core.app.NotificationManagerCompat;
 
 public final class DemoFlowManager {
+    private static final String TAG = "DemoFlowManager";
     public static final String CHANNEL_ID = "intentlink_latency_alerts";
     public static final String ACTION_SHOW_LATENCY_ALERT = "com.acore2026.intentlink.SHOW_LATENCY_ALERT";
     public static final String EXTRA_TITLE = "title";
@@ -52,10 +54,15 @@ public final class DemoFlowManager {
             return;
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
-            alarmManager.setExactAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent);
-        } else {
-            alarmManager.setExact(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent);
+        try {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                alarmManager.setAndAllowWhileIdle(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent);
+            } else {
+                alarmManager.set(AlarmManager.ELAPSED_REALTIME_WAKEUP, triggerAt, pendingIntent);
+            }
+        } catch (SecurityException error) {
+            Log.w(TAG, "Alarm scheduling blocked, showing latency notification immediately", error);
+            showLatencyNotification(context, title, body, upgradeAction);
         }
     }
 
