@@ -79,6 +79,22 @@ test('root app renders the unified flow and in-app controls', async ({ page }) =
     }
 
     window.WebSocket = MockWebSocket as unknown as typeof WebSocket;
+
+    (window as any).__scenarioCalls = [];
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes(':7878/scenarios/')) {
+        (window as any).__scenarioCalls.push({ url, method: init?.method ?? 'GET' });
+        const activeScenario = url.includes('/overload/') ? 'overload' : 'base';
+        return new Response(JSON.stringify({ ok: true, activeScenario }), {
+          status: 200,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return originalFetch(input, init);
+    };
   });
 
   await page.goto(APP_URL);
@@ -100,6 +116,13 @@ test('root app renders the unified flow and in-app controls', async ({ page }) =
   await expect(page.getByTestId('intent-suggest')).toBeVisible();
   await expect(page.getByTestId('intent-backend-status')).toHaveText('Stub Mode');
 
+  await page.getByTestId('controls-trigger').click();
+  await page.getByTestId('compute-node-host-input').fill('10.0.0.9');
+  await page.getByTestId('compute-node-save').click();
+  await expect(page.getByTestId('compute-node-status')).toHaveText('Configured');
+  await expect(page.getByText('http://10.0.0.9:7878/scenarios/overload/arm')).toBeVisible();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+
   const input = page.getByTestId('intent-input');
   await page.getByTestId('intent-suggest').click();
   await expect(input).toHaveValue('I want to play Nitro Racer with smooth 4K gameplay.');
@@ -110,7 +133,11 @@ test('root app renders the unified flow and in-app controls', async ({ page }) =
   await expect(page.getByText("I've detected available 'Network Computing' capabilities nearby.")).toBeVisible();
   await expect(page.getByTestId('intent-launch-card')).toHaveCount(1);
   await expect(page.getByText('Android launch only')).toHaveCount(0);
+  await expect.poll(() => page.evaluate(() => (window as any).__scenarioCalls.length)).toBe(0);
   await page.getByTestId('intent-launch-confirm').click();
+  await expect
+    .poll(() => page.evaluate(() => (window as any).__scenarioCalls.map((call: any) => call.url)))
+    .toContain('http://10.0.0.9:7878/scenarios/overload/arm');
   await expect(page.getByText('Android launch only')).toBeVisible();
   await expect(page.getByText('Moonlight handoff is available only inside the installed Android app.')).toBeVisible();
 
@@ -135,6 +162,7 @@ test('root app renders the unified flow and in-app controls', async ({ page }) =
   await page.getByTestId('controls-trigger').click();
   await expect(page.getByTestId('system-agent-status')).toHaveText('Disconnected');
   await expect(page.getByTestId('system-agent-endpoint-input')).toHaveValue('system-agent.example.com');
+  await expect(page.getByTestId('compute-node-host-input')).toHaveValue('10.0.0.9');
   await page.getByRole('button', { name: 'Close controls' }).click();
   await page.getByTestId('experience-menu-button').click();
   await page.getByTestId('experience-option-intent').click();
@@ -188,4 +216,41 @@ test('controls sheet works on the app route on mobile', async ({ browser }) => {
   await expect(page.getByText('CONNECTION UNSTABLE')).toBeVisible();
 
   await context.close();
+});
+
+test('compute node overload failure blocks Moonlight handoff', async ({ page }) => {
+  await page.addInitScript(() => {
+    window.localStorage.clear();
+    const originalFetch = window.fetch.bind(window);
+    window.fetch = async (input, init) => {
+      const url = typeof input === 'string' ? input : input instanceof URL ? input.toString() : input.url;
+      if (url.includes(':7878/scenarios/')) {
+        return new Response(JSON.stringify({ ok: false, activeScenario: 'base' }), {
+          status: 500,
+          headers: { 'Content-Type': 'application/json' },
+        });
+      }
+
+      return originalFetch(input, init);
+    };
+  });
+
+  await page.goto(APP_URL);
+  await page.getByTestId('experience-menu-button').click();
+  await page.getByTestId('experience-option-intent').click();
+
+  await page.getByTestId('controls-trigger').click();
+  await page.getByTestId('compute-node-host-input').fill('10.0.0.9');
+  await page.getByTestId('compute-node-save').click();
+  await page.getByRole('button', { name: 'Close', exact: true }).click();
+
+  await page.getByTestId('intent-input').fill('I want to play Nitro Racer with smooth 4K gameplay.');
+  await page.getByRole('button', { name: 'compute' }).click();
+  await page.getByTestId('intent-send').click();
+  await page.getByTestId('intent-launch-confirm').click();
+
+  await expect(page.getByText('Compute Node unavailable')).toBeVisible();
+  await expect(page.getByText('Moonlight was not launched')).toBeVisible();
+  await expect(page.getByTestId('intent-launch-confirm')).toHaveText('Scenario Failed');
+  await expect(page.getByText('Android launch only')).toHaveCount(0);
 });
