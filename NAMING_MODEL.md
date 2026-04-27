@@ -43,6 +43,7 @@ Preferred flow wording:
 - **Control Panel**: the in-app floating controls sheet opened from the `Controls` button
 - **Controls Button**: the floating trigger that opens the Control Panel
 - **System Agent Backend**: the configurable backend endpoint inside the Control Panel used by Direct Intent
+- **Compute Node Host**: the configurable host inside the Control Panel used to arm Moonlight stream scenarios
 - **Live Controls**: the small section label shown at the top of the Control Panel
 
 Use **Control Panel** as the default term. Do not call it the admin page or presenter page.
@@ -54,6 +55,8 @@ Use **Control Panel** as the default term. Do not call it the admin page or pres
 - **6G Boost**: the streaming upgrade path
 - **6G Edge Boost**: the gaming upgrade path
 - **Moonlight Handoff**: launching the external Moonlight Android app
+- **Base Scenario**: the Compute Node scenario armed after the user taps `Fix`
+- **Overload Scenario**: the Compute Node scenario armed before the Moonlight handoff
 
 ## Terms to Avoid
 
