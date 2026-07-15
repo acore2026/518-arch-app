@@ -1,66 +1,66 @@
-# App Naming Model
+# 应用命名模型
 
-This file defines the canonical language for the app. Use these names in code discussions, UI reviews, demo scripts, issues, and future documentation.
+本文档定义 IntentLink 的统一用语。代码讨论、界面评审、演示脚本、issue 和后续文档都应采用这些名称。
 
-## Product-Level Names[](https://)
+## 产品名称
 
-- **App**: `IntentLink`
-  Use this as the overall product/project name when referring to the Android app or the shared SPA.
-- **Agent Brand**: `NETAGENT`
-  Use this for the in-app network-aware assistant shown inside Direct Intent.
+- **App**：`IntentLink`
+  指 Android 应用、共享 SPA 或整个项目时使用该名称。
+- **Agent Brand**：`NETAGENT`
+  指 Direct Intent 中面向用户的网络感知助手。
 
-## Routes
+## 路由
 
-- **App Route**: `/`
-  The main app surface on web and Android. This now includes the end-user experience and the live control panel.
+- **App Route**：`/`
+  Web 和 Android 共用的主界面，包含用户体验和实时 Control Panel。
 
-## Primary Experiences
+## 主要体验
 
-- **Streaming**: the video demo experience branded in-app as `StreamFlex`
-- **Gaming**: the cloud gaming demo experience branded in-app as `CloudPlay`
-- **Direct Intent**: the chat-style intent experience powered by `NETAGENT`
+- **Streaming**：应用内品牌为 `StreamFlex` 的视频演示体验。
+- **Gaming**：应用内品牌为 `CloudPlay` 的云游戏演示体验。
+- **Direct Intent**：由 `NETAGENT` 提供的对话式意图体验。
 
-Use **experience** as the umbrella term, not “tab” or “mode”, unless you are specifically describing the UI switcher.
+统一使用 **experience（体验）** 作为上位概念。只有明确描述界面切换控件时才使用“页签”或“模式”。
 
-## Direct Intent Vocabulary
+## Direct Intent 用语
 
-- **Transcript**: the scrollable message history
-- **Composer**: the bottom input bar
-- **Intent Message**: a single chat bubble in the transcript
-- **Action Card**: the embedded decision card shown inside a network reply
-- **Compute Available Card**: the specific action card for game-launch requests
-- **Primary CTA**: `Deduct & Launch`
+- **Transcript**：可滚动的消息记录区域。
+- **Composer**：页面底部的输入栏。
+- **Intent Message**：Transcript 中的一条对话消息。
+- **Action Card**：嵌在网络回复中的决策卡片。
+- **Compute Available Card**：游戏启动请求使用的特定 Action Card。
+- **Primary CTA**：`Deduct & Launch`。
 
-Preferred flow wording:
+推荐使用以下流程表述：
 
-- User submits a **game-launch intent**
-- `NETAGENT` returns a **compute-available response**
-- User confirms the **action card**
-- The app performs a **Moonlight handoff**
+- 用户提交 **game-launch intent**。
+- `NETAGENT` 返回 **compute-available response**。
+- 用户确认 **Action Card**。
+- 应用执行 **Moonlight Handoff**。
 
-## Presenter / Control Vocabulary
+## 控制面板用语
 
-- **Control Panel**: the in-app floating controls sheet opened from the `Controls` button
-- **Controls Button**: the floating trigger that opens the Control Panel
-- **System Agent Backend**: the configurable backend endpoint inside the Control Panel used by Direct Intent
-- **Compute Node Host**: the configurable host inside the Control Panel used to arm Moonlight stream scenarios
-- **Live Controls**: the small section label shown at the top of the Control Panel
+- **Control Panel**：通过 `Controls` 按钮打开的应用内浮层。
+- **Controls Button**：打开 Control Panel 的悬浮按钮。
+- **System Agent Backend**：Control Panel 中供 Direct Intent 使用的可配置后端地址。
+- **Compute Node Host**：用于切换 Moonlight 串流场景的可配置主机。
+- **Live Controls**：Control Panel 顶部的小标题。
 
-Use **Control Panel** as the default term. Do not call it the admin page or presenter page.
+默认使用 **Control Panel**，不要称为 admin page 或 presenter page。
 
-## Network and Upgrade Terms
+## 网络与升级用语
 
-- **Network Tier**: `5G`, `Degraded`, or `6G`
-- **Network Degradation**: the simulated congestion event
-- **6G Boost**: the streaming upgrade path
-- **6G Edge Boost**: the gaming upgrade path
-- **Moonlight Handoff**: launching the external Moonlight Android app
-- **Base Scenario**: the Compute Node scenario armed after the user taps `Fix`
-- **Overload Scenario**: the Compute Node scenario armed before the Moonlight handoff
+- **Network Tier**：`5G`、`Degraded` 或 `6G`。
+- **Network Degradation**：模拟的网络拥塞事件。
+- **6G Boost**：Streaming 的体验升级路径。
+- **6G Edge Boost**：Gaming 的体验升级路径。
+- **Moonlight Handoff**：打开外部 Moonlight Android 应用。
+- **Base Scenario**：用户点击 `Fix` 后激活的 Compute Node 场景。
+- **Overload Scenario**：Moonlight Handoff 之前激活的 Compute Node 场景。
 
-## Terms to Avoid
+## 避免使用的说法
 
-- Avoid `phone shell`, `container app`, or `fake phone UI` for the current `/` experience.
-- Avoid calling Direct Intent a `chatbot`; use `NETAGENT` or `Direct Intent`.
-- Avoid `admin route`, `/admin`, or `presenter page`; those no longer exist in the app.
-- Avoid `backend integration` for the local demo path; use `stubbed flow`, `stubbed orchestration`, or `System Agent backend` when the endpoint is configured.
+- 不要用 `phone shell`、`container app` 或 `fake phone UI` 描述当前 `/` 体验。
+- 不要把 Direct Intent 称为 `chatbot`，应使用 `NETAGENT` 或 `Direct Intent`。
+- 不要使用 `admin route`、`/admin` 或 `presenter page`，这些入口已经不存在。
+- 本地演示路径不要笼统称为 `backend integration`；应根据实际情况使用 `stubbed flow`、`stubbed orchestration` 或 `System Agent Backend`。
