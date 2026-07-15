@@ -251,6 +251,9 @@ test('compute node overload failure blocks Moonlight handoff', async ({ page }) 
 
   await expect(page.getByText('Compute Node unavailable')).toBeVisible();
   await expect(page.getByText('Moonlight was not launched')).toBeVisible();
+  await expect(page.getByText('Scenario: overload')).toBeVisible();
+  await expect(page.getByText('Endpoint: http://10.0.0.9:7878/scenarios/overload/arm')).toBeVisible();
+  await expect(page.getByText('Error: Compute Node returned HTTP 500.')).toBeVisible();
   await expect(page.getByTestId('intent-launch-confirm')).toHaveText('Scenario Failed');
   await expect(page.getByText('Android launch only')).toHaveCount(0);
 });

@@ -12,6 +12,7 @@ describe('Compute Node scenario API', () => {
   it('normalizes configured hosts and builds scenario URLs', () => {
     expect(normalizeComputeNodeHost('192.168.1.20')).toBe('192.168.1.20');
     expect(normalizeComputeNodeHost('http://192.168.1.20:7878/scenarios/base/arm')).toBe('192.168.1.20');
+    expect(normalizeComputeNodeHost('192.168.1.20:7878/scenarios/overload/arm')).toBe('192.168.1.20');
     expect(buildComputeScenarioUrl('192.168.1.20', 'overload')).toBe(
       'http://192.168.1.20:7878/scenarios/overload/arm'
     );

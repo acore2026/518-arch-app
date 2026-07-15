@@ -74,7 +74,7 @@ export function IntentExperience({
             }`}
           >
             {!isUser && message.title && <div className="mb-2 text-xs font-semibold uppercase tracking-[0.18em] text-slate-500">{message.title}</div>}
-            <p className="text-[17px] leading-8">{message.text}</p>
+            <p className="whitespace-pre-wrap break-words text-[17px] leading-8">{message.text}</p>
 
             {message.finalData && (
               <div className="mt-4 rounded-2xl border border-slate-200 bg-white/90 p-4 text-left text-slate-900">

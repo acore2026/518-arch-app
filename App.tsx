@@ -195,6 +195,21 @@ export default function App() {
     setIntentMessages((messages) => [...messages, message]);
   }, [hasSystemAgentEndpoint]);
 
+  const formatComputeScenarioDebug = (
+    scenario: 'base' | 'overload',
+    error: unknown
+  ) => {
+    const endpoint = buildComputeScenarioUrl(computeNodeHost, scenario) || 'not configured';
+    const cause = error instanceof Error ? error.message : String(error);
+
+    return [
+      'Debug details:',
+      `Scenario: ${scenario}`,
+      `Endpoint: ${endpoint}`,
+      `Error: ${cause}`,
+    ].join('\n');
+  };
+
   const resumeGamingUpgradeFlow = useCallback(() => {
     if (degradationTimer.current !== null) {
       window.clearTimeout(degradationTimer.current);
@@ -235,7 +250,10 @@ export default function App() {
           console.error('Compute Node base scenario arming failed', error);
           appendNetworkIntentMessage(
             'Compute Node recovery failed',
-            'The Fix action was accepted, but IntentLink could not arm the base scenario on the Compute Node. The Moonlight stream may stay degraded.',
+            [
+              'The Fix action was accepted, but IntentLink could not arm the base scenario on the Compute Node. The Moonlight stream may stay degraded.',
+              formatComputeScenarioDebug('base', error),
+            ].join('\n\n'),
             'gaming',
             true
           );
@@ -292,9 +310,12 @@ export default function App() {
       }));
       appendNetworkIntentMessage(
         hasComputeNodeEndpoint ? 'Compute Node unavailable' : 'Compute Node required',
-        hasComputeNodeEndpoint
-          ? 'IntentLink could not arm the overload scenario on the Compute Node, so Moonlight was not launched.'
-          : 'Configure the Compute Node Host in the Control Panel before launching Moonlight.',
+        [
+          hasComputeNodeEndpoint
+            ? 'IntentLink could not arm the overload scenario on the Compute Node, so Moonlight was not launched.'
+            : 'Configure the Compute Node Host in the Control Panel before launching Moonlight.',
+          formatComputeScenarioDebug('overload', error),
+        ].join('\n\n'),
         'gaming',
         true
       );
